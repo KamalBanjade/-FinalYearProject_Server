@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="SecureMedicalRecordSystem.API/SecureMedicalRecordSystem.API.csproj" />
+  <Project Path="SecureMedicalRecordSystem.Application/SecureMedicalRecordSystem.Application.csproj" />
+  <Project Path="SecureMedicalRecordSystem.Core/SecureMedicalRecordSystem.Core.csproj" />
+  <Project Path="SecureMedicalRecordSystem.Infrastructure/SecureMedicalRecordSystem.Infrastructure.csproj" />
+  <Project Path="SecureMedicalRecordSystem.Tests/SecureMedicalRecordSystem.Tests.csproj" />
+</Solution>

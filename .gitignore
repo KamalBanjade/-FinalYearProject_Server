@@ -1,0 +1,61 @@
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options
+.vs/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+
+# Sensitive files
+appsettings.json
+appsettings.*.json
+!appsettings.Development.json
+*.pfx
+*.key
+*.pem
+
+# Rider
+.idea/
+
+# SQL Server files
+*.mdf
+*.ldf
+*.ndf
+
+# Logs
+logs/
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Storage Folders - ignore contents but keep structure
+Storage/EncryptedFiles/*
+!Storage/EncryptedFiles/.gitkeep
+Storage/QRCodes/*
+!Storage/QRCodes/.gitkeep
+Storage/Temp/*
+!Storage/Temp/.gitkeep
+keys.txt
