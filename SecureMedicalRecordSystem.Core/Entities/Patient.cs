@@ -1,29 +1,48 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace SecureMedicalRecordSystem.Core.Entities;
 
-/// <summary>
-/// Patient demographic and profile information.
-/// </summary>
 public class Patient : BaseEntity
 {
-    public string NationalId { get; set; } = string.Empty; // Encrypted at rest
-    public string FirstName { get; set; } = string.Empty;
-    public string LastName { get; set; } = string.Empty;
+    public Guid UserId { get; set; }
+
+    // Required fields
+    [Required]
     public DateTime DateOfBirth { get; set; }
+
+    [Required]
+    [MaxLength(20)]
     public string Gender { get; set; } = string.Empty;
-    public string? Address { get; set; }  // Encrypted at rest
-    public string? PhoneNumber { get; set; }
-    public string? Email { get; set; }
-    public string? EmergencyContactName { get; set; }
-    public string? EmergencyContactPhone { get; set; }
+
+    // Optional fields
+    [MaxLength(10)]
     public string? BloodType { get; set; }
     public string? Allergies { get; set; }
+    public string? ChronicConditions { get; set; }
+    public string? CurrentMedications { get; set; }
+    
+    [MaxLength(100)]
+    public string? EmergencyContactName { get; set; }
+    
+    [MaxLength(20)]
+    public string? EmergencyContactPhone { get; set; }
 
-    // QR Code for quick access
-    public string? QrCodeData { get; set; }
-    public string? QrCodeImagePath { get; set; }
-    public Guid? UserId { get; set; }  // Patient's portal account
+    [MaxLength(50)]
+    public string? EmergencyContactRelationship { get; set; }
+    
+    public string? EmergencyNotesToResponders { get; set; }
+    
+    public DateTime? EmergencyDataLastUpdated { get; set; }
+
+    public string? Address { get; set; }
+
+    // Primary Doctor (for smart suggestions) 
+    public Guid? PrimaryDoctorId { get; set; }
+    public Doctor? PrimaryDoctor { get; set; }
 
     // Navigation
-    public User? User { get; set; }
+    public ApplicationUser User { get; set; } = null!;
     public ICollection<MedicalRecord> MedicalRecords { get; set; } = new List<MedicalRecord>();
+    public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
+    public ICollection<QRToken> QRTokens { get; set; } = new List<QRToken>();
 }

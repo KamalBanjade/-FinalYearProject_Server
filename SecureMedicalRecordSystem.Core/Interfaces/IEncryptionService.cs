@@ -1,13 +1,44 @@
 namespace SecureMedicalRecordSystem.Core.Interfaces;
 
 /// <summary>
-/// AES-256 encryption service for field-level and file encryption.
+/// AES-256-CBC encryption service for field-level and file (stream-based) encryption.
 /// </summary>
 public interface IEncryptionService
 {
+    // --- String / byte-array methods (used for field-level encryption) ---
+
+    /// <summary>Encrypts a UTF-8 string and returns Base64-encoded ciphertext.</summary>
     string Encrypt(string plaintext);
+
+    /// <summary>Decrypts a Base64-encoded ciphertext string and returns the original UTF-8 string.</summary>
     string Decrypt(string ciphertext);
+
+    /// <summary>Encrypts raw bytes using AES-256-CBC.</summary>
     byte[] EncryptBytes(byte[] data);
+
+    /// <summary>Decrypts raw bytes using AES-256-CBC.</summary>
     byte[] DecryptBytes(byte[] data);
-    string ComputeHash(string input);  // SHA-256
+
+    /// <summary>Computes a SHA-256 hex hash of the given UTF-8 string.</summary>
+    string ComputeHash(string input);
+
+    // --- Stream-based methods (used for file encryption) ---
+
+    /// <summary>
+    /// Encrypts an input stream using AES-256-CBC and returns the encrypted stream.
+    /// Suitable for large file streaming without loading the entire file into memory.
+    /// </summary>
+    Task<Stream> EncryptFileAsync(Stream inputStream);
+
+    /// <summary>
+    /// Decrypts an AES-256-CBC encrypted stream and returns the decrypted stream.
+    /// </summary>
+    Task<Stream> DecryptFileAsync(Stream encryptedStream);
+
+    /// <summary>
+    /// Computes a SHA-256 hash of a file stream and returns a Base64 string.
+    /// Resets stream position before and after hashing.
+    /// Used for integrity verification.
+    /// </summary>
+    Task<string> ComputeFileHashAsync(Stream fileStream);
 }

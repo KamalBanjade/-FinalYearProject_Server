@@ -14,5 +14,5 @@ public class RefreshToken : BaseEntity
     public string? UserAgent { get; set; }
 
     // Navigation
-    public User User { get; set; } = null!;
+    public ApplicationUser ApplicationUser { get; set; } = null!;
 }

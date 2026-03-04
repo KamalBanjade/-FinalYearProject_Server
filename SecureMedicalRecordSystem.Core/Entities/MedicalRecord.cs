@@ -2,32 +2,50 @@ using SecureMedicalRecordSystem.Core.Enums;
 
 namespace SecureMedicalRecordSystem.Core.Entities;
 
-/// <summary>
-/// A single medical encounter / record entry, AES-256 encrypted.
-/// </summary>
 public class MedicalRecord : BaseEntity
 {
     public Guid PatientId { get; set; }
-    public Guid DoctorId { get; set; }
-    public RecordStatus Status { get; set; } = RecordStatus.Active;
 
-    // Encrypted fields (stored as ciphertext)
-    public string EncryptedDiagnosis { get; set; } = string.Empty;
-    public string EncryptedNotes { get; set; } = string.Empty;
-    public string EncryptedPrescriptions { get; set; } = string.Empty;
-    public string? EncryptedLabResults { get; set; }
+    // Doctor Assignment (Optional at upload, required for review)
+    public Guid? AssignedDoctorId { get; set; }
+    public Doctor? AssignedDoctor { get; set; }
 
-    // Metadata (not encrypted)
-    public string RecordType { get; set; } = string.Empty;  // e.g., "Consultation", "Lab", "Imaging"
-    public DateTime VisitDate { get; set; }
-    public string? IcdCode { get; set; }  // International Classification of Diseases
+    // Storage
+    public string S3ObjectKey { get; set; } = string.Empty;
+    public bool IsEncrypted { get; set; } = true;
+    public string EncryptionAlgorithm { get; set; } = "AES-256-CBC";
 
-    // Digital signature (RSA-2048)
-    public string? DigitalSignature { get; set; }
-    public DateTime? SignedAt { get; set; }
+    // File metadata
+    public string OriginalFileName { get; set; } = string.Empty;
+    public string FileHash { get; set; } = string.Empty; // SHA-256 hash for integrity
+    public long FileSizeBytes { get; set; }
+    public string MimeType { get; set; } = string.Empty;
+
+    // State
+    public RecordState State { get; set; } = RecordState.Draft;
+
+    // Optional Metadata
+    public string? RecordType { get; set; }
+    public string? Description { get; set; }
+    public string? Notes { get; set; }
+    public DateTime? RecordDate { get; set; }
+
+    // Versioning
+    public int Version { get; set; } = 1;
+    public Guid? PreviousVersionId { get; set; }
+    public bool IsLatestVersion { get; set; } = true;
+
+    // Soft delete
+    public new bool IsDeleted { get; set; } = false;
+    public DateTime? DeletedAt { get; set; }
+    public Guid? DeletedBy { get; set; }
+
+    // Specific Timestamps for Medical Records
+    public DateTime UploadedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastModifiedAt { get; set; }
+    public DateTime? CertifiedAt { get; set; }
 
     // Navigation
     public Patient Patient { get; set; } = null!;
-    public User Doctor { get; set; } = null!;
-    public ICollection<MedicalFile> Files { get; set; } = new List<MedicalFile>();
+    public ICollection<RecordCertification> Certifications { get; set; } = new List<RecordCertification>();
 }

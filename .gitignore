@@ -38,10 +38,24 @@ appsettings.*.json
 # Rider
 .idea/
 
-# SQL Server files
-*.mdf
+# Environment files
+appsettings.Production.json
+appsettings.Staging.json
+*.user
+*.suo
+
+# Sensitive data
+Storage/EncryptedFiles/*
+!Storage/EncryptedFiles/.gitkeep
+Storage/QRCodes/*
+!Storage/QRCodes/.gitkeep
+Logs/*
+!Logs/.gitkeep
 *.ldf
 *.ndf
+
+# SQL Server files
+*.mdf
 
 # Logs
 logs/

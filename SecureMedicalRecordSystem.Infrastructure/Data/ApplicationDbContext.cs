@@ -1,82 +1,241 @@
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using SecureMedicalRecordSystem.Core.Entities;
 
 namespace SecureMedicalRecordSystem.Infrastructure.Data;
 
-/// <summary>
-/// EF Core database context for the Secure Medical Record System.
-/// All PII fields are encrypted before persistence via AES-256.
-/// </summary>
-public class ApplicationDbContext : DbContext
+public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityRole<Guid>, Guid>
 {
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options) { }
 
-    public DbSet<User> Users => Set<User>();
     public DbSet<Patient> Patients => Set<Patient>();
+    public DbSet<Doctor> Doctors => Set<Doctor>();
+    public DbSet<Department> Departments => Set<Department>();
     public DbSet<MedicalRecord> MedicalRecords => Set<MedicalRecord>();
     public DbSet<MedicalFile> MedicalFiles => Set<MedicalFile>();
-    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<RecordCertification> RecordCertifications => Set<RecordCertification>();
+    public DbSet<Appointment> Appointments => Set<Appointment>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<QRToken> QRTokens => Set<QRToken>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<AccessSession> AccessSessions => Set<AccessSession>();
+    public DbSet<TrustedDevice> TrustedDevices => Set<TrustedDevice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
-        base.OnModelCreating(modelBuilder);
+        base.OnModelCreating(modelBuilder); // MUST BE FIRST for Identity
 
-        // Apply all entity configurations from this assembly
-        modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
+        // Rename Identity Tables
+        modelBuilder.Entity<ApplicationUser>().ToTable("Users");
+        modelBuilder.Entity<IdentityRole<Guid>>().ToTable("Roles");
+        modelBuilder.Entity<IdentityUserRole<Guid>>().ToTable("UserRoles");
+        modelBuilder.Entity<IdentityUserClaim<Guid>>().ToTable("UserClaims");
+        modelBuilder.Entity<IdentityUserLogin<Guid>>().ToTable("UserLogins");
+        modelBuilder.Entity<IdentityUserToken<Guid>>().ToTable("UserTokens");
+        modelBuilder.Entity<IdentityRoleClaim<Guid>>().ToTable("RoleClaims");
 
-        // Global query filter: exclude soft-deleted records for all BaseEntity types
-        modelBuilder.Entity<User>().HasQueryFilter(e => !e.IsDeleted);
+        // Global query filters for soft delete (if applicable from base entity)
         modelBuilder.Entity<Patient>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Doctor>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<MedicalRecord>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<MedicalFile>().HasQueryFilter(e => !e.IsDeleted);
-        modelBuilder.Entity<RefreshToken>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<RecordCertification>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Appointment>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<QRToken>().HasQueryFilter(e => !e.IsDeleted);
 
-        // AuditLog — fully immutable, never soft-deleted
+        // AuditLog specific configurations
         modelBuilder.Entity<AuditLog>(entity =>
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Timestamp).HasDefaultValueSql("GETUTCDATE()");
         });
 
-        // Encrypted field column sizes
+        // --------------------------------------------------------
+        // RELATIONSHIPS & CONSTRAINTS (Phase 1 Identity)
+        // --------------------------------------------------------
+
+        // ApplicationUser -> Patient (One-to-One)
+        modelBuilder.Entity<Patient>()
+            .HasOne(p => p.User)
+            .WithOne(u => u.PatientProfile)
+            .HasForeignKey<Patient>(p => p.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // ApplicationUser -> Doctor (One-to-One)
+        modelBuilder.Entity<Doctor>()
+            .HasOne(d => d.User)
+            .WithOne(u => u.DoctorProfile)
+            .HasForeignKey<Doctor>(d => d.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // ApplicationUser -> AuditLogs (One-to-Many)
+        modelBuilder.Entity<AuditLog>()
+            .HasOne(al => al.User)
+            .WithMany(u => u.AuditLogs)
+            .HasForeignKey(al => al.UserId)
+            .OnDelete(DeleteBehavior.SetNull); // Keep audit logs even if user is deleted
+
+        // Patient -> MedicalRecord (One-to-Many)
+        modelBuilder.Entity<MedicalRecord>()
+            .HasOne(mr => mr.Patient)
+            .WithMany(p => p.MedicalRecords)
+            .HasForeignKey(mr => mr.PatientId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Patient -> Appointment (One-to-Many)
+        modelBuilder.Entity<Appointment>()
+            .HasOne(a => a.Patient)
+            .WithMany(p => p.Appointments)
+            .HasForeignKey(a => a.PatientId)
+            .OnDelete(DeleteBehavior.Cascade);
+            
+        // Patient -> QRToken (One-to-Many)
+        modelBuilder.Entity<QRToken>()
+            .HasOne(q => q.Patient)
+            .WithMany(p => p.QRTokens)
+            .HasForeignKey(q => q.PatientId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Doctor -> RecordCertification (One-to-Many)
+        modelBuilder.Entity<RecordCertification>()
+            .HasOne(rc => rc.Doctor)
+            .WithMany(d => d.Certifications)
+            .HasForeignKey(rc => rc.DoctorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // Doctor -> Appointment (One-to-Many)
+        modelBuilder.Entity<Appointment>()
+            .HasOne(a => a.Doctor)
+            .WithMany(d => d.Appointments)
+            .HasForeignKey(a => a.DoctorId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // MedicalRecord configurations
         modelBuilder.Entity<MedicalRecord>(entity =>
         {
-            entity.Property(e => e.EncryptedDiagnosis).HasMaxLength(8000);
-            entity.Property(e => e.EncryptedNotes).HasMaxLength(8000);
-            entity.Property(e => e.EncryptedPrescriptions).HasMaxLength(8000);
-            entity.Property(e => e.EncryptedLabResults).HasMaxLength(8000);
+            entity.Property(m => m.S3ObjectKey).HasMaxLength(500).IsRequired();
+            entity.Property(m => m.OriginalFileName).HasMaxLength(255).IsRequired();
+            entity.Property(m => m.FileHash).HasMaxLength(100).IsRequired();
+            entity.Property(m => m.MimeType).HasMaxLength(100).IsRequired();
+            entity.Property(m => m.EncryptionAlgorithm).HasMaxLength(50).HasDefaultValue("AES-256-CBC");
+            entity.Property(m => m.IsEncrypted).HasDefaultValue(true);
+            entity.Property(m => m.Version).HasDefaultValue(1);
+            entity.Property(m => m.IsLatestVersion).HasDefaultValue(true);
+            entity.Property(m => m.IsDeleted).HasDefaultValue(false);
         });
 
-        // User → RefreshTokens
-        modelBuilder.Entity<RefreshToken>(entity =>
+        // MedicalRecord -> RecordCertification (One-to-Many)
+        modelBuilder.Entity<RecordCertification>()
+            .HasOne(rc => rc.MedicalRecord)
+            .WithMany(mr => mr.Certifications)
+            .HasForeignKey(rc => rc.RecordId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Department -> Doctor (One-to-Many)
+        modelBuilder.Entity<Doctor>()
+            .HasOne(d => d.Department)
+            .WithMany(dept => dept.Doctors)
+            .HasForeignKey(d => d.DepartmentId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        // AccessSession configurations
+        modelBuilder.Entity<AccessSession>(entity =>
         {
-            entity.HasOne(rt => rt.User)
-                  .WithMany(u => u.RefreshTokens)
-                  .HasForeignKey(rt => rt.UserId)
+            entity.HasIndex(s => s.SessionToken).IsUnique();
+            
+            // To avoid multiple cascade paths in SQL Server:
+            // AccessSession -> Patient (Restrict)
+            // AccessSession -> QRToken -> Patient (Cascade)
+            entity.HasOne(s => s.Patient)
+                .WithMany()
+                .HasForeignKey(s => s.PatientId)
+                .OnDelete(DeleteBehavior.NoAction);
+
+            entity.HasOne(s => s.QRToken)
+                .WithMany(q => q.AccessSessions)
+                .HasForeignKey(s => s.QRTokenId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // --------------------------------------------------------
+        // TRUSTED DEVICES
+        // --------------------------------------------------------
+        modelBuilder.Entity<TrustedDevice>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.DeviceToken).IsUnique();
+            entity.HasIndex(e => new { e.UserId, e.IsActive });
+            entity.HasIndex(e => e.ExpiresAt);
+            
+            entity.HasOne(e => e.User)
+                  .WithMany(u => u.TrustedDevices)
+                  .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
+            
+            entity.Property(e => e.DeviceToken).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.CreatedAt).IsRequired();
+            entity.Property(e => e.ExpiresAt).IsRequired();
         });
 
-        // Patient → MedicalRecords
-        modelBuilder.Entity<MedicalRecord>(entity =>
-        {
-            entity.HasOne(mr => mr.Patient)
-                  .WithMany(p => p.MedicalRecords)
-                  .HasForeignKey(mr => mr.PatientId)
-                  .OnDelete(DeleteBehavior.Restrict);
-        });
-    }
+        // --------------------------------------------------------
+        // INDEXES FOR PERFORMANCE
+        // --------------------------------------------------------
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-    {
-        // Auto-set UpdatedAt on all modified BaseEntity records
-        foreach (var entry in ChangeTracker.Entries<BaseEntity>())
-        {
-            if (entry.State == EntityState.Modified)
-            {
-                entry.Entity.UpdatedAt = DateTime.UtcNow;
-            }
-        }
-        return base.SaveChangesAsync(cancellationToken);
+        // Existing unique indexes
+        modelBuilder.Entity<Doctor>().HasIndex(d => d.NMCLicense).IsUnique();
+        modelBuilder.Entity<QRToken>().HasIndex(q => q.Token).IsUnique();
+
+        // Existing single-column indexes
+        modelBuilder.Entity<AuditLog>().HasIndex(a => a.Timestamp);
+        modelBuilder.Entity<QRToken>().HasIndex(q => q.ExpiresAt);
+        modelBuilder.Entity<Appointment>().HasIndex(a => a.ScheduledAt);
+
+        // --- NEW PERFORMANCE INDEXES ---
+
+        // Doctor & Patient UserId lookups (FindByUserId is called on almost every request)
+        modelBuilder.Entity<Doctor>().HasIndex(d => d.UserId)
+            .HasDatabaseName("IX_Doctors_UserId");
+        modelBuilder.Entity<Patient>().HasIndex(p => p.UserId)
+            .HasDatabaseName("IX_Patients_UserId");
+
+        // MedicalRecord - PatientId (GetPatientRecordsAsync filters by this on every call)
+        modelBuilder.Entity<MedicalRecord>().HasIndex(m => m.PatientId)
+            .HasDatabaseName("IX_MedicalRecords_PatientId");
+
+        // MedicalRecord - AssignedDoctorId (doctor pending/certified queries filter by this)
+        modelBuilder.Entity<MedicalRecord>().HasIndex(m => m.AssignedDoctorId)
+            .HasDatabaseName("IX_MedicalRecords_AssignedDoctorId");
+
+        // MedicalRecord - State (filtering by Draft/Pending/Certified)
+        modelBuilder.Entity<MedicalRecord>().HasIndex(m => m.State)
+            .HasDatabaseName("IX_MedicalRecords_State");
+
+        // MedicalRecord composite - covers GetCertified/GetPendingForDoctorAsync exactly
+        modelBuilder.Entity<MedicalRecord>()
+            .HasIndex(m => new { m.AssignedDoctorId, m.State, m.IsDeleted })
+            .HasDatabaseName("IX_MedicalRecords_AssignedDoctor_State_Deleted");
+
+        // MedicalRecord - PatientId + State composite (GetPatientRecordsAsync)
+        modelBuilder.Entity<MedicalRecord>()
+            .HasIndex(m => new { m.PatientId, m.IsDeleted })
+            .HasDatabaseName("IX_MedicalRecords_PatientId_Deleted");
+
+        // RecordCertification - DoctorId + IsValid (COUNT query in GetDoctorDetailsAsync)
+        modelBuilder.Entity<RecordCertification>()
+            .HasIndex(c => new { c.DoctorId, c.IsValid })
+            .HasDatabaseName("IX_RecordCertifications_DoctorId_IsValid");
+
+        // --------------------------------------------------------
+        // DATA SEEDING
+        // --------------------------------------------------------
+        var seedDate = new DateTime(2024, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        modelBuilder.Entity<Department>().HasData(
+            new Department { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Name = "Cardiology", Description = "Heart and blood vessel diseases", CreatedAt = seedDate },
+            new Department { Id = Guid.Parse("22222222-2222-2222-2222-222222222222"), Name = "Neurology", Description = "Disorders of the nervous system", CreatedAt = seedDate },
+            new Department { Id = Guid.Parse("33333333-3333-3333-3333-333333333333"), Name = "Orthopedics", Description = "Bones, joints, ligaments, tendons, and muscles", CreatedAt = seedDate },
+            new Department { Id = Guid.Parse("44444444-4444-4444-4444-444444444444"), Name = "Pediatrics", Description = "Medical care of infants, children, and adolescents", CreatedAt = seedDate },
+            new Department { Id = Guid.Parse("55555555-5555-5555-5555-555555555555"), Name = "Oncology", Description = "Prevention, diagnosis, and treatment of cancer", CreatedAt = seedDate }
+        );
     }
 }
