@@ -16,11 +16,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<MedicalFile> MedicalFiles => Set<MedicalFile>();
     public DbSet<RecordCertification> RecordCertifications => Set<RecordCertification>();
     public DbSet<Appointment> Appointments => Set<Appointment>();
+    public DbSet<AppointmentRecord> AppointmentRecords => Set<AppointmentRecord>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<QRToken> QRTokens => Set<QRToken>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AccessSession> AccessSessions => Set<AccessSession>();
     public DbSet<TrustedDevice> TrustedDevices => Set<TrustedDevice>();
+    public DbSet<DoctorAvailability> DoctorAvailabilities => Set<DoctorAvailability>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -43,6 +45,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         modelBuilder.Entity<RecordCertification>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Appointment>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<QRToken>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<DoctorAvailability>().HasQueryFilter(e => !e.IsDeleted);
 
         // AuditLog specific configurations
         modelBuilder.Entity<AuditLog>(entity =>
@@ -84,11 +87,33 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             .OnDelete(DeleteBehavior.Cascade);
 
         // Patient -> Appointment (One-to-Many)
-        modelBuilder.Entity<Appointment>()
-            .HasOne(a => a.Patient)
-            .WithMany(p => p.Appointments)
-            .HasForeignKey(a => a.PatientId)
-            .OnDelete(DeleteBehavior.Cascade);
+        modelBuilder.Entity<Appointment>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            // Indexes
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => e.DoctorId);
+            entity.HasIndex(e => e.AppointmentDate);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => new { e.DoctorId, e.AppointmentDate }); // Conflict check
+            
+            // Foreign keys
+            entity.HasOne(e => e.Patient)
+                  .WithMany(p => p.Appointments)
+                  .HasForeignKey(e => e.PatientId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            
+            entity.HasOne(e => e.Doctor)
+                  .WithMany(d => d.Appointments)
+                  .HasForeignKey(e => e.DoctorId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            
+            // Required fields
+            entity.Property(e => e.AppointmentDate).IsRequired();
+            entity.Property(e => e.Status).IsRequired();
+            entity.Property(e => e.Duration).HasDefaultValue(30);
+        });
             
         // Patient -> QRToken (One-to-Many)
         modelBuilder.Entity<QRToken>()
@@ -104,12 +129,46 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             .HasForeignKey(rc => rc.DoctorId)
             .OnDelete(DeleteBehavior.Restrict);
 
-        // Doctor -> Appointment (One-to-Many)
-        modelBuilder.Entity<Appointment>()
-            .HasOne(a => a.Doctor)
-            .WithMany(d => d.Appointments)
-            .HasForeignKey(a => a.DoctorId)
-            .OnDelete(DeleteBehavior.Restrict);
+        // AppointmentRecord (Junction Table)
+        modelBuilder.Entity<AppointmentRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            // Composite unique index
+            entity.HasIndex(e => new { e.AppointmentId, e.MedicalRecordId }).IsUnique();
+            
+            // Foreign keys
+            entity.HasOne(e => e.Appointment)
+                  .WithMany(a => a.LinkedRecords)
+                  .HasForeignKey(e => e.AppointmentId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            
+            entity.HasOne(e => e.MedicalRecord)
+                  .WithMany()
+                  .HasForeignKey(e => e.MedicalRecordId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // DoctorAvailability configurations
+        modelBuilder.Entity<DoctorAvailability>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            // Indexes for fast lookups
+            entity.HasIndex(e => e.DoctorId);
+            entity.HasIndex(e => e.DayOfWeek);
+            entity.HasIndex(e => e.SpecificDate);
+            entity.HasIndex(e => new { e.DoctorId, e.IsAvailable, e.IsActive }); // Common lookup
+            
+            entity.HasOne(e => e.Doctor)
+                  .WithMany(d => d.Availabilities)
+                  .HasForeignKey(e => e.DoctorId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            
+            entity.Property(e => e.StartTime).IsRequired();
+            entity.Property(e => e.EndTime).IsRequired();
+            entity.Property(e => e.RecurrenceType).IsRequired();
+        });
 
         // MedicalRecord configurations
         modelBuilder.Entity<MedicalRecord>(entity =>
@@ -225,6 +284,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         modelBuilder.Entity<RecordCertification>()
             .HasIndex(c => new { c.DoctorId, c.IsValid })
             .HasDatabaseName("IX_RecordCertifications_DoctorId_IsValid");
+
+        // RecordCertification - RecordId (used in EXISTS and joins for every record lookup)
+        modelBuilder.Entity<RecordCertification>()
+            .HasIndex(c => c.RecordId)
+            .HasDatabaseName("IX_RecordCertifications_RecordId");
 
         // --------------------------------------------------------
         // DATA SEEDING

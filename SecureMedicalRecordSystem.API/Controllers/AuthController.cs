@@ -200,7 +200,9 @@ public class AuthController : ControllerBase
             user.LastLoginAt,
             user.IsActive,
             user.TwoFactorEnabled,
-            user.TOTPSetupCompleted
+            user.TOTPSetupCompleted,
+            DateOfBirth = user.PatientProfile?.DateOfBirth,
+            BloodType = user.PatientProfile?.BloodType
         };
 
         return Ok(ApiResponse.SuccessResult(userData, "User profile retrieved successfully."));

@@ -41,21 +41,54 @@ public class MedicalRecordsController : ControllerBase
         return Ok(ApiResponse.SuccessResult(result.Data, result.Message));
     }
 
-    [HttpGet("download/{recordId}")]
-    public async Task<IActionResult> Download(Guid recordId)
+    // Removed legacy buffered endpoint
+
+
+    [HttpGet("view/{recordId}")]
+    public async Task<IActionResult> View(Guid recordId)
     {
+        _logger.LogInformation("[STREAMING MODE ACTIVE] Patient viewing record {RecordId} inline", recordId);
         var userId = GetUserId();
         if (userId == Guid.Empty) return Unauthorized(ApiResponse.FailureResult("Invalid session."));
 
-        var result = await _medicalRecordsService.DownloadRecordAsync(recordId, userId);
-        
-        if (!result.Success) 
+        var result = await _medicalRecordsService.StreamDownloadRecordAsync(recordId, userId);
+
+        if (!result.Success)
         {
             if (result.Message == "Unauthorized access.") return Forbid();
             return BadRequest(ApiResponse.FailureResult(result.Message));
         }
 
-        return File(result.FileStream!, result.ContentType!, result.FileName);
+        // Medical data: prevent any browser/CDN caching of decrypted content
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers["Content-Disposition"] = $"inline; filename=\"{result.FileName}\"";
+
+        // enableRangeProcessing: true → browser PDF viewer can request pages on demand
+        return File(result.FileStream!, result.ContentType!, enableRangeProcessing: true);
+    }
+
+    [HttpGet("stream-download/{recordId}")]
+    public async Task<IActionResult> StreamDownload(Guid recordId)
+    {
+        _logger.LogInformation("[STREAMING MODE ACTIVE] Patient downloading record {RecordId} as attachment", recordId);
+        var userId = GetUserId();
+        if (userId == Guid.Empty) return Unauthorized(ApiResponse.FailureResult("Invalid session."));
+
+        var result = await _medicalRecordsService.StreamDownloadRecordAsync(recordId, userId);
+
+        if (!result.Success)
+        {
+            if (result.Message == "Unauthorized access.") return Forbid();
+            return BadRequest(ApiResponse.FailureResult(result.Message));
+        }
+
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        // attachment → browser opens Save As dialog
+        return File(result.FileStream!, result.ContentType!, result.FileName, enableRangeProcessing: false);
     }
 
     [HttpGet("patient/{patientId}")]

@@ -2,8 +2,11 @@ namespace SecureMedicalRecordSystem.Core.Enums;
 
 public enum AppointmentStatus
 {
-    Requested = 0,
+    Scheduled = 0,
     Confirmed = 1,
-    Completed = 2,
-    Cancelled = 3
+    InProgress = 2,
+    Completed = 3,
+    Cancelled = 4,
+    NoShow = 5,
+    Rescheduled = 6
 }

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SecureMedicalRecordSystem.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using SecureMedicalRecordSystem.Infrastructure.Data;
 namespace SecureMedicalRecordSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260306163058_AddAppointmentSystemRevised")]
+    partial class AddAppointmentSystemRevised
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -656,69 +659,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.ToTable("Doctors");
                 });
 
-            modelBuilder.Entity("SecureMedicalRecordSystem.Core.Entities.DoctorAvailability", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<int?>("DayOfWeek")
-                        .HasColumnType("int");
-
-                    b.Property<Guid>("DoctorId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<TimeSpan>("EndTime")
-                        .HasColumnType("time");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsAvailable")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<string>("Reason")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
-                    b.Property<int>("RecurrenceType")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("SpecificDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<TimeSpan>("StartTime")
-                        .HasColumnType("time");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DayOfWeek");
-
-                    b.HasIndex("DoctorId");
-
-                    b.HasIndex("SpecificDate");
-
-                    b.HasIndex("DoctorId", "IsAvailable", "IsActive");
-
-                    b.ToTable("DoctorAvailabilities");
-                });
-
             modelBuilder.Entity("SecureMedicalRecordSystem.Core.Entities.MedicalFile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1355,17 +1295,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("SecureMedicalRecordSystem.Core.Entities.DoctorAvailability", b =>
-                {
-                    b.HasOne("SecureMedicalRecordSystem.Core.Entities.Doctor", "Doctor")
-                        .WithMany("Availabilities")
-                        .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Doctor");
-                });
-
             modelBuilder.Entity("SecureMedicalRecordSystem.Core.Entities.MedicalFile", b =>
                 {
                     b.HasOne("SecureMedicalRecordSystem.Core.Entities.MedicalRecord", "MedicalRecord")
@@ -1487,8 +1416,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
             modelBuilder.Entity("SecureMedicalRecordSystem.Core.Entities.Doctor", b =>
                 {
                     b.Navigation("Appointments");
-
-                    b.Navigation("Availabilities");
 
                     b.Navigation("Certifications");
                 });

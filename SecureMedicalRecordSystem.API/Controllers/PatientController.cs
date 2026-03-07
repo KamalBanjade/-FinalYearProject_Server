@@ -198,7 +198,7 @@ public class PatientController : ControllerBase
         if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
             return Unauthorized(ApiResponse.FailureResult("Invalid session."));
 
-        var result = await _medicalRecordsService.DownloadRecordAsync(recordId, userId);
+        var result = await _medicalRecordsService.StreamDownloadRecordAsync(recordId, userId);
         if (!result.Success)
         {
             if (result.Message == "Unauthorized access.") return Forbid();

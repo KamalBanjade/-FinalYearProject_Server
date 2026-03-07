@@ -34,4 +34,5 @@ public class Doctor : BaseEntity
     public ApplicationUser User { get; set; } = null!;
     public ICollection<RecordCertification> Certifications { get; set; } = new List<RecordCertification>();
     public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
+    public ICollection<DoctorAvailability> Availabilities { get; set; } = new List<DoctorAvailability>();
 }

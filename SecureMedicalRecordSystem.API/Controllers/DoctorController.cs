@@ -19,17 +19,19 @@ public class DoctorController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
-
     private readonly IMedicalRecordsService _medicalRecordsService;
+    private readonly ILogger<DoctorController> _logger;
 
     public DoctorController(
         ApplicationDbContext context, 
         UserManager<ApplicationUser> userManager,
-        IMedicalRecordsService medicalRecordsService)
+        IMedicalRecordsService medicalRecordsService,
+        ILogger<DoctorController> logger)
     {
         _context = context;
         _userManager = userManager;
         _medicalRecordsService = medicalRecordsService;
+        _logger = logger;
     }
 
     [HttpGet("profile")]
@@ -136,6 +138,19 @@ public class DoctorController : ControllerBase
         return Ok(ApiResponse.SuccessResult(new List<object>(), "Doctor appointments retrieved (placeholder)."));
     }
 
+    [HttpGet("patients")]
+    public async Task<IActionResult> GetPatients()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return Unauthorized(ApiResponse.FailureResult("Invalid session."));
+
+        var result = await _medicalRecordsService.GetPatientsForDoctorAsync(userId);
+        if (!result.Success) return BadRequest(ApiResponse.FailureResult(result.Message));
+
+        return Ok(ApiResponse.SuccessResult(result.Data, result.Message));
+    }
+
     // =====================
     // FSM TRANSITION ENDPOINTS
     // =====================
@@ -172,21 +187,50 @@ public class DoctorController : ControllerBase
         return Ok(ApiResponse.SuccessResult(result.Data, result.Message));
     }
 
-    [HttpGet("records/{recordId}/download")]
-    public async Task<IActionResult> DownloadRecord(Guid recordId)
+    // Removed legacy buffered download
+
+
+    [HttpGet("records/{recordId}/view")]
+    public async Task<IActionResult> ViewRecord(Guid recordId)
     {
+        _logger.LogInformation("[STREAMING MODE ACTIVE] Doctor viewing record {RecordId} inline", recordId);
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
             return Unauthorized(ApiResponse.FailureResult("Invalid session."));
 
-        var result = await _medicalRecordsService.DownloadRecordAsync(recordId, userId);
+        var result = await _medicalRecordsService.StreamDownloadRecordAsync(recordId, userId);
         if (!result.Success)
         {
             if (result.Message == "Unauthorized access.") return Forbid();
             return BadRequest(ApiResponse.FailureResult(result.Message));
         }
 
-        return File(result.FileStream!, result.ContentType!, result.FileName);
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        Response.Headers["Content-Disposition"] = $"inline; filename=\"{result.FileName}\"";
+        return File(result.FileStream!, result.ContentType!, enableRangeProcessing: true);
+    }
+
+    [HttpGet("records/{recordId}/stream-download")]
+    public async Task<IActionResult> StreamDownloadRecord(Guid recordId)
+    {
+        _logger.LogInformation("[STREAMING MODE ACTIVE] Doctor downloading record {RecordId} as attachment", recordId);
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return Unauthorized(ApiResponse.FailureResult("Invalid session."));
+
+        var result = await _medicalRecordsService.StreamDownloadRecordAsync(recordId, userId);
+        if (!result.Success)
+        {
+            if (result.Message == "Unauthorized access.") return Forbid();
+            return BadRequest(ApiResponse.FailureResult(result.Message));
+        }
+
+        Response.Headers["Cache-Control"] = "no-store, no-cache, must-revalidate";
+        Response.Headers["Pragma"] = "no-cache";
+        Response.Headers["X-Content-Type-Options"] = "nosniff";
+        return File(result.FileStream!, result.ContentType!, result.FileName, enableRangeProcessing: false);
     }
 
 }

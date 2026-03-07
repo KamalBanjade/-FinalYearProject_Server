@@ -218,7 +218,7 @@ public class AccessController : ControllerBase
             return Forbid("File downloads are not permitted during Emergency access sessions.");
         }
 
-        var result = await _medicalRecordsService.DownloadRecordAsync(id, session.PatientId);
+        var result = await _medicalRecordsService.StreamDownloadRecordAsync(id, session.PatientId);
         if (!result.Success)
             return BadRequest(ApiResponse.FailureResult(result.Message));
 

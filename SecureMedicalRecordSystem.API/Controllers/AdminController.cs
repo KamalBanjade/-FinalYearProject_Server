@@ -13,10 +13,12 @@ namespace SecureMedicalRecordSystem.API.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly IAuditLogService _auditLogService;
 
-    public AdminController(IAuthService authService)
+    public AdminController(IAuthService authService, IAuditLogService auditLogService)
     {
         _authService = authService;
+        _auditLogService = auditLogService;
     }
 
     [HttpPost("doctors/invite")]
@@ -116,5 +118,32 @@ public class AdminController : ControllerBase
         var result = await _authService.UpdateUserAsync(id, request);
         if (!result.Success) return BadRequest(ApiResponse.FailureResult(result.Message));
         return Ok(ApiResponse.SuccessResult((object?)null, result.Message));
+    }
+
+    // ==========================================
+    // AUDIT LOG MANAGEMENT
+    // ==========================================
+
+    [HttpGet("audit-logs")]
+    public async Task<IActionResult> GetAuditLogs(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] string? action = null,
+        [FromQuery] SecureMedicalRecordSystem.Core.Enums.AuditSeverity? severity = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null)
+    {
+        var (logs, totalCount) = await _auditLogService.GetLogsAsync(page, pageSize, searchTerm, action, severity, fromDate, toDate);
+
+        var response = new SecureMedicalRecordSystem.Core.DTOs.Admin.PaginatedAuditLogsDTO
+        {
+            Logs = logs,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize
+        };
+
+        return Ok(ApiResponse.SuccessResult(response, "Audit logs retrieved successfully."));
     }
 }

@@ -33,12 +33,17 @@ public interface IEncryptionService
     /// <summary>
     /// Decrypts an AES-256-CBC encrypted stream and returns the decrypted stream.
     /// </summary>
-    Task<Stream> DecryptFileAsync(Stream encryptedStream);
-
     /// <summary>
     /// Computes a SHA-256 hash of a file stream and returns a Base64 string.
     /// Resets stream position before and after hashing.
     /// Used for integrity verification.
     /// </summary>
     Task<string> ComputeFileHashAsync(Stream fileStream);
+
+    /// <summary>
+    /// Returns a live CryptoStream wrapping the provided encrypted stream using AES-256-CBC.
+    /// Does NOT buffer — designed for true end-to-end pipelined streaming.
+    /// The caller must dispose the returned stream when done.
+    /// </summary>
+    Stream CreateDecryptingStream(Stream encryptedStream);
 }

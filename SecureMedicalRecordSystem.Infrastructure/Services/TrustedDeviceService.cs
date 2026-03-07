@@ -119,7 +119,12 @@ If this wasn't you, immediately:
 3. Revoke all trusted devices
 4. Change your password";
 
-            await _emailService.SendSecurityAlertEmailAsync(user.Email, "New Trusted Device Added", emailBody);
+            var alertEmail = user.Email;
+            _ = Task.Run(async () =>
+            {
+                try { await _emailService.SendSecurityAlertEmailAsync(alertEmail, "New Trusted Device Added", emailBody); }
+                catch (Exception ex) { _logger.LogError(ex, "Background security alert email failed for user {UserId}", userId); }
+            });
         }
 
         return deviceToken;

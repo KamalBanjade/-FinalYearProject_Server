@@ -31,4 +31,8 @@ public class MedicalRecordResponseDTO
     
     public int Version { get; set; }
     public bool CanDownload { get; set; } // Based on user permissions
+    
+    // Elderly-friendly timeline fields
+    public string RelativeTimeString { get; set; } = string.Empty; // e.g., "2 days ago (March 3)"
+    public string TimePeriod { get; set; } = string.Empty; // e.g., "THIS_WEEK"
 }

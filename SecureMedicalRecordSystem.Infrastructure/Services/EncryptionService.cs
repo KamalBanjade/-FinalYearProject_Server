@@ -135,37 +135,6 @@ public class EncryptionService : IEncryptionService
         }
     }
 
-    /// <inheritdoc/>
-    public async Task<Stream> DecryptFileAsync(Stream encryptedStream)
-    {
-        _logger.LogDebug("Decrypting file stream using AES-256-CBC.");
-
-        try
-        {
-            using var aes = Aes.Create();
-            aes.Key = _key;
-            aes.IV = _iv;
-            aes.Mode = CipherMode.CBC;
-            aes.Padding = PaddingMode.PKCS7;
-
-            var decryptor = aes.CreateDecryptor();
-            var outputStream = new MemoryStream();
-
-            await using (var cryptoStream = new CryptoStream(encryptedStream, decryptor, CryptoStreamMode.Read, leaveOpen: true))
-            {
-                await cryptoStream.CopyToAsync(outputStream);
-            }
-
-            outputStream.Position = 0;
-            _logger.LogDebug("File stream decrypted successfully ({Bytes} bytes plaintext).", outputStream.Length);
-            return outputStream;
-        }
-        catch (CryptographicException ex)
-        {
-            _logger.LogError(ex, "Cryptographic error during file decryption. File may have been tampered with.");
-            throw new InvalidOperationException("File decryption failed. The file may be corrupted or tampered with.", ex);
-        }
-    }
 
     /// <inheritdoc/>
     public async Task<string> ComputeFileHashAsync(Stream fileStream)
@@ -184,5 +153,49 @@ public class EncryptionService : IEncryptionService
         var hashString = Convert.ToBase64String(hashBytes);
         _logger.LogDebug("File hash computed: {Hash}", hashString[..8] + "...");
         return hashString;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Returns a live CryptoStream that decrypts on-the-fly as the caller reads.
+    /// No intermediate MemoryStream. Caller must dispose the returned stream.
+    /// </remarks>
+    public Stream CreateDecryptingStream(Stream encryptedStream)
+    {
+        _logger.LogInformation("[PERF] [Encryption] Creating live decryption CryptoStream (no buffer).");
+        var aes = Aes.Create();
+        aes.Key = _key;
+        aes.IV = _iv;
+        aes.Mode = CipherMode.CBC;
+        aes.Padding = PaddingMode.PKCS7;
+        var decryptor = aes.CreateDecryptor();
+        var cryptoStream = new CryptoStream(encryptedStream, decryptor, CryptoStreamMode.Read, leaveOpen: true);
+        return new DisposingCryptoStream(cryptoStream, aes, decryptor);
+    }
+}
+
+/// <summary>
+/// Wraps a CryptoStream and ensures the AES instance and ICryptoTransform are
+/// properly disposed when the stream is disposed. This is required because
+/// CryptoStream's disposal does not own the AES/decryptor lifecycle.
+/// </summary>
+internal sealed class DisposingCryptoStream(CryptoStream inner, IDisposable aes, IDisposable decryptor) : Stream
+{
+    public override bool CanRead => inner.CanRead;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+    public override void Flush() => inner.Flush();
+    public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+    public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken ct) => inner.ReadAsync(buffer, offset, count, ct);
+    public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken ct = default) => inner.ReadAsync(buffer, ct);
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) { inner.Dispose(); decryptor.Dispose(); aes.Dispose(); }
+        base.Dispose(disposing);
     }
 }

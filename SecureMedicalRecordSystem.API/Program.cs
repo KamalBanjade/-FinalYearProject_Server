@@ -58,6 +58,8 @@ try
     builder.Services.AddScoped<IMedicalRecordsService, MedicalRecordsService>();
     builder.Services.AddScoped<IKeyManagementService, KeyManagementService>();
     builder.Services.AddScoped<IDigitalSignatureService, DigitalSignatureService>();
+    builder.Services.AddScoped<IAppointmentService, AppointmentService>();
+    builder.Services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
 
     // DI Registrations - Phase 4: QR Code System
     builder.Services.AddScoped<IQRTokenService, QRTokenService>();
@@ -66,6 +68,7 @@ try
     builder.Services.AddHostedService<AccessSessionCleanupWorker>();
     builder.Services.AddHostedService<EmailReminderService>();
     builder.Services.AddHostedService<SecureMedicalRecordSystem.API.BackgroundServices.TrustedDeviceCleanupService>();
+    builder.Services.AddHostedService<AppointmentStatusWorker>();
 
 
 
@@ -204,6 +207,7 @@ try
         options.AddPolicy("DoctorPolicy", policy => policy.RequireRole("Doctor"));
         options.AddPolicy("PatientPolicy", policy => policy.RequireRole("Patient"));
         options.AddPolicy("DoctorOrAdminPolicy", policy => policy.RequireRole("Doctor", "Admin"));
+        options.AddPolicy("PatientOrDoctorPolicy", policy => policy.RequireRole("Patient", "Doctor"));
     });
 
     // CORS

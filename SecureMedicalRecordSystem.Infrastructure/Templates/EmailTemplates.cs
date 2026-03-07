@@ -87,4 +87,161 @@ public static class EmailTemplates
         </body>
         </html>";
     }
+
+    public static string GetAppointmentScheduledTemplate(string patientName, string doctorName, DateTime date, string reason)
+    {
+        return $@"
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;'>
+                <div style='background-color: #3b82f6; color: white; padding: 24px; text-align: center;'>
+                    <h1 style='margin: 0; font-size: 20px;'>Appointment Requested</h1>
+                </div>
+                <div style='padding: 32px;'>
+                    <p>Dear {patientName},</p>
+                    <p>Your appointment request has been received and is waiting for confirmation from the doctor.</p>
+                    <div style='background-color: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin: 24px 0;'>
+                        <p style='margin: 5px 0;'><strong>Doctor:</strong> Dr. {doctorName}</p>
+                        <p style='margin: 5px 0;'><strong>Date & Time:</strong> {date:f}</p>
+                        <p style='margin: 5px 0;'><strong>Reason:</strong> {reason}</p>
+                    </div>
+                    <p>We will notify you once the doctor confirms the appointment.</p>
+                </div>
+                <div style='background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8;'>
+                    <p>© {DateTime.Now.Year} Medical Record System</p>
+                </div>
+            </div>
+        </body>
+        </html>";
+    }
+
+    public static string GetAppointmentConfirmedTemplate(string patientName, string doctorName, DateTime date, string department)
+    {
+        return $@"
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;'>
+                <div style='background-color: #10b981; color: white; padding: 24px; text-align: center;'>
+                    <h1 style='margin: 0; font-size: 20px;'>Appointment Confirmed!</h1>
+                </div>
+                <div style='padding: 32px;'>
+                    <p>Dear {patientName},</p>
+                    <p>Your appointment with Dr. {doctorName} has been <strong>confirmed</strong>.</p>
+                    <div style='background-color: #f0fdf4; padding: 20px; border-radius: 8px; border: 1px solid #bbf7d0; margin: 24px 0;'>
+                        <p style='margin: 5px 0;'><strong>Doctor:</strong> Dr. {doctorName}</p>
+                        <p style='margin: 5px 0;'><strong>Department:</strong> {department}</p>
+                        <p style='margin: 5px 0;'><strong>Date & Time:</strong> {date:f}</p>
+                    </div>
+                    <p>Please arrive 10 minutes before your scheduled time. You can find more details in your dashboard.</p>
+                </div>
+                <div style='background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8;'>
+                    <p>© {DateTime.Now.Year} Medical Record System</p>
+                </div>
+            </div>
+        </body>
+        </html>";
+    }
+
+    public static string GetAppointmentCancelledTemplate(string userName, DateTime date, string reason, string role)
+    {
+        return $@"
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;'>
+                <div style='background-color: #ef4444; color: white; padding: 24px; text-align: center;'>
+                    <h1 style='margin: 0; font-size: 20px;'>Appointment Cancelled</h1>
+                </div>
+                <div style='padding: 32px;'>
+                    <p>Dear {userName},</p>
+                    <p>The appointment scheduled for <strong>{date:f}</strong> has been cancelled.</p>
+                    <div style='background-color: #fef2f2; padding: 20px; border-radius: 8px; border: 1px solid #fecaca; margin: 24px 0;'>
+                        <p style='margin: 5px 0;'><strong>Cancellation Reason:</strong> {reason}</p>
+                    </div>
+                    { (role == "Patient" ? "<p>You can book a new appointment through your dashboard.</p>" : "") }
+                </div>
+                <div style='background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8;'>
+                    <p>© {DateTime.Now.Year} Medical Record System</p>
+                </div>
+            </div>
+        </body>
+        </html>";
+    }
+
+    public static string GetAppointmentRescheduledTemplate(string patientName, string doctorName, DateTime oldDate, DateTime newDate)
+    {
+        return $@"
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;'>
+                <div style='background-color: #f59e0b; color: white; padding: 24px; text-align: center;'>
+                    <h1 style='margin: 0; font-size: 20px;'>Appointment Rescheduled</h1>
+                </div>
+                <div style='padding: 32px;'>
+                    <p>Dear {patientName},</p>
+                    <p>Your appointment with Dr. {doctorName} has been rescheduled.</p>
+                    <div style='background-color: #fffbeb; padding: 20px; border-radius: 8px; border: 1px solid #fef3c7; margin: 24px 0;'>
+                        <p style='margin: 5px 0; color: #92400e;'><strong>Old Date:</strong> <strike>{oldDate:f}</strike></p>
+                        <p style='margin: 5px 0; font-size: 16px;'><strong>New Date:</strong> {newDate:f}</p>
+                    </div>
+                    <p>Please log in to your dashboard to confirm this new time slot.</p>
+                </div>
+                <div style='background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8;'>
+                    <p>© {DateTime.Now.Year} Medical Record System</p>
+                </div>
+            </div>
+        </body>
+        </html>";
+    }
+
+    public static string GetAppointmentReminderTemplate(string patientName, string doctorName, DateTime date)
+    {
+        return $@"
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;'>
+                <div style='background-color: #6366f1; color: white; padding: 24px; text-align: center;'>
+                    <h1 style='margin: 0; font-size: 20px;'>Appointment Reminder</h1>
+                </div>
+                <div style='padding: 32px;'>
+                    <p>Dear {patientName},</p>
+                    <p>This is a friendly reminder of your upcoming appointment tomorrow.</p>
+                    <div style='background-color: #eef2ff; padding: 20px; border-radius: 8px; border: 1px solid #e0e7ff; margin: 24px 0;'>
+                        <p style='margin: 5px 0;'><strong>Doctor:</strong> Dr. {doctorName}</p>
+                        <p style='margin: 5px 0;'><strong>Date & Time:</strong> {date:f}</p>
+                    </div>
+                    <p>If you need to cancel or reschedule, please do so at least 24 hours in advance through your dashboard.</p>
+                </div>
+                <div style='background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8;'>
+                    <p>© {DateTime.Now.Year} Medical Record System</p>
+                </div>
+            </div>
+        </body>
+        </html>";
+    }
+    public static string GetDoctorNewAppointmentTemplate(string doctorName, string patientName, DateTime date, string reason)
+    {
+        return $@"
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;'>
+                <div style='background-color: #0f172a; color: white; padding: 24px; text-align: center;'>
+                    <h1 style='margin: 0; font-size: 20px;'>New Appointment Scheduled</h1>
+                </div>
+                <div style='padding: 32px;'>
+                    <p>Dear Dr. {doctorName},</p>
+                    <p>A new appointment has been scheduled by a patient.</p>
+                    <div style='background-color: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin: 24px 0;'>
+                        <p style='margin: 5px 0;'><strong>Patient:</strong> {patientName}</p>
+                        <p style='margin: 5px 0;'><strong>Date & Time:</strong> {date:f}</p>
+                        <p style='margin: 5px 0;'><strong>Reason:</strong> {reason}</p>
+                    </div>
+                    <p>You can view the patient's history and prepare for the visit through your dashboard.</p>
+                </div>
+                <div style='background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8;'>
+                    <p>© {DateTime.Now.Year} Medical Record System</p>
+                </div>
+            </div>
+        </body>
+        </html>";
+    }
 }

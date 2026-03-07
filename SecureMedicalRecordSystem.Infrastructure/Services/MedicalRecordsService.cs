@@ -9,6 +9,7 @@ using SecureMedicalRecordSystem.Core.Enums;
 using SecureMedicalRecordSystem.Core.Interfaces;
 using SecureMedicalRecordSystem.Infrastructure.Configuration;
 using SecureMedicalRecordSystem.Infrastructure.Data;
+using SecureMedicalRecordSystem.Infrastructure.Utils;
 
 namespace SecureMedicalRecordSystem.Infrastructure.Services;
 
@@ -133,56 +134,59 @@ public class MedicalRecordsService : IMedicalRecordsService
         }
     }
 
-    public async Task<(bool Success, string Message, Stream? FileStream, string? FileName, string? ContentType)> DownloadRecordAsync(
+    /// <inheritdoc/>
+    public async Task<(bool Success, string Message, Stream? FileStream, string? FileName, string? ContentType)> StreamDownloadRecordAsync(
         Guid recordId,
         Guid requestingUserId)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        _logger.LogInformation("[PERF] [Stream] StreamDownloadRecordAsync started for Record: {RecordId}", recordId);
+
+        // 1. DB Lookup (metadata only — no blob)
         var record = await _context.MedicalRecords
             .Include(r => r.Patient)
             .FirstOrDefaultAsync(r => r.Id == recordId && !r.IsDeleted);
 
+        _logger.LogInformation("[PERF] [Stream] Phase 1: DB lookup in {Ms}ms", sw.ElapsedMilliseconds);
+
         if (record == null)
             return (false, "Record not found.", null, null, null);
 
-        // Check permissions
+        // 2. Permission check
         var canAccess = await CheckAccessAsync(record, requestingUserId);
         if (!canAccess)
             return (false, "Unauthorized access.", null, null, null);
 
         try
         {
-            // Download encrypted file
-            var encryptedStream = await _tigrisService.DownloadFileAsync(record.S3ObjectKey);
+            // 3. Fire audit log BEFORE streaming so latency is absorbed in parallel
+            _ = _auditLogService.LogAsync(requestingUserId, "Medical Record Streamed",
+                $"Streamed {record.OriginalFileName}", "0.0.0.0", "Service", "MedicalRecord", record.Id.ToString());
 
-            // Decrypt file
-            var decryptedStream = await _encryptionService.DecryptFileAsync(encryptedStream);
+            // 4. Open raw S3 stream (no buffer copy — live network socket)
+            _logger.LogInformation("[PERF] [Stream] Phase 3: Opening raw S3 socket stream");
+            var s3Stream = await _tigrisService.OpenDownloadStreamAsync(record.S3ObjectKey);
+            _logger.LogInformation("[PERF] [Stream] Phase 3: S3 socket open in {Ms}ms (TTFB achieved)", sw.ElapsedMilliseconds);
 
-            // Optional: Verify integrity
-            // var currentHash = await _encryptionService.ComputeFileHashAsync(decryptedStream);
-            // decryptedStream.Position = 0;
-            // if (currentHash != record.FileHash) _logger.LogWarning("Integrity mismatch for record {Id}", recordId);
+            // 5. Wrap in live CryptoStream — no copy, no MemoryStream
+            var cryptoStream = _encryptionService.CreateDecryptingStream(s3Stream);
+            _logger.LogInformation("[PERF] [Stream] Phase 4: CryptoStream pipeline assembled in {Ms}ms total", sw.ElapsedMilliseconds);
 
-            await _auditLogService.LogAsync(
-                requestingUserId,
-                "Medical Record Downloaded",
-                $"Downloaded {record.OriginalFileName}",
-                "0.0.0.0", "Service", "MedicalRecord", record.Id.ToString());
-
-            return (true, "Success", decryptedStream, record.OriginalFileName, record.MimeType);
+            // Return immediately — ASP.NET will pump chunks through the pipeline
+            return (true, "Success", cryptoStream, record.OriginalFileName, record.MimeType);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error downloading record {Id}", recordId);
-            return (false, "An error occurred during download.", null, null, null);
+            _logger.LogError(ex, "[PERF] [Stream] CRITICAL FAILURE during stream setup for record {Id}", recordId);
+            return (false, "An error occurred during streaming.", null, null, null);
         }
     }
 
-    public async Task<(bool Success, string Message, List<MedicalRecordResponseDTO>? Data)> GetPatientRecordsAsync(
+    public async Task<(bool Success, string Message, GroupedMedicalRecordsDTO? Data)> GetPatientRecordsAsync(
         Guid patientId,
         Guid requestingUserId)
     {
         // Access check: a Patient can only see their own records.
-        // Use a direct context predicate instead of two separate UserManager calls.
         var requestingUserRole = await _context.Users
             .AsNoTracking()
             .Where(u => u.Id == requestingUserId)
@@ -214,8 +218,44 @@ public class MedicalRecordsService : IMedicalRecordsService
             .OrderByDescending(r => r.UploadedAt)
             .ToListAsync();
 
-        var dtos = records.Select(r => MapToDto(r, r.Patient.User.FirstName + " " + r.Patient.User.LastName, true)).ToList();
-        return (true, "Success", dtos);
+        var patientName = records.FirstOrDefault()?.Patient?.User != null 
+            ? $"{records[0].Patient.User.FirstName} {records[0].Patient.User.LastName}" 
+            : "Patient";
+
+        var dtos = records.Select(r => MapToDto(r, patientName, true)).ToList();
+        
+        // Grouping logic
+        var groupedData = new GroupedMedicalRecordsDTO
+        {
+            TotalCount = dtos.Count,
+            Sections = dtos
+                .GroupBy(r => r.TimePeriod)
+                .Select(g => new RecordSectionDTO
+                {
+                    TimePeriod = g.Key,
+                    DisplayName = DateGroupingHelper.GetSectionDisplayName(g.Key),
+                    RecordCount = g.Count(),
+                    IsExpanded = g.Key switch
+                    {
+                        "THIS_WEEK" => true,
+                        "THIS_MONTH" => g.Count() <= 10,
+                        _ => false
+                    },
+                    Records = g.ToList()
+                })
+                .OrderBy(s => s.TimePeriod switch
+                {
+                    "THIS_WEEK" => 1,
+                    "THIS_MONTH" => 2,
+                    "EARLIER_THIS_YEAR" => 3,
+                    "LAST_YEAR" => 4,
+                    "OLDER" => 5,
+                    _ => 6
+                })
+                .ToList()
+        };
+
+        return (true, "Success", groupedData);
     }
 
     public async Task<(bool Success, string Message, MedicalRecordResponseDTO? Data)> GetRecordDetailsAsync(
@@ -286,12 +326,11 @@ public class MedicalRecordsService : IMedicalRecordsService
 
         var records = await _context.MedicalRecords
             .AsNoTracking()
-            .Where(r => r.State == RecordState.Certified
-                     && !r.IsDeleted
-                     && r.Certifications.Any(c => c.DoctorId == doctorId && c.IsValid))
+            .Where(r => r.State == RecordState.Certified && !r.IsDeleted)
+            .Where(r => r.Certifications.Any(c => c.DoctorId == doctorId && c.IsValid && !c.IsDeleted))
             .Include(r => r.Patient)
                 .ThenInclude(p => p.User)
-            .Include(r => r.Certifications)
+            .Include(r => r.Certifications.Where(c => c.IsValid && !c.IsDeleted))
                 .ThenInclude(c => c.Doctor)
                     .ThenInclude(d => d.User)
             .OrderByDescending(r => r.CertifiedAt)
@@ -304,6 +343,58 @@ public class MedicalRecordsService : IMedicalRecordsService
             return MapToDto(r, patientName, true);
         }).ToList();
         return (true, "Success", dtos);
+    }
+
+    public async Task<(bool Success, string Message, List<PatientListResponseDTO>? Data)> GetPatientsForDoctorAsync(Guid doctorUserId)
+    {
+        var doctor = await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == doctorUserId);
+        if (doctor == null)
+            return (false, "Doctor profile not found.", null);
+
+        // Efficient combined query: Get patients and their record stats in one round-trip
+        var patientData = await _context.MedicalRecords
+            .AsNoTracking()
+            .Where(r => r.AssignedDoctorId == doctor.Id && !r.IsDeleted)
+            .GroupBy(r => r.PatientId)
+            .Select(g => new
+            {
+                PatientId = g.Key,
+                SharedRecordsCount = g.Count(),
+                LatestRecordDate = g.Max(r => r.UploadedAt),
+                Patient = _context.Patients
+                    .Include(p => p.User)
+                    .FirstOrDefault(p => p.Id == g.Key)
+            })
+            .ToListAsync();
+
+        if (!patientData.Any())
+            return (true, "No patients found.", new List<PatientListResponseDTO>());
+
+        var result = patientData
+            .Where(pd => pd.Patient != null)
+            .Select(pd => {
+                var p = pd.Patient!;
+                return new PatientListResponseDTO
+                {
+                    Id = p.Id,
+                    FirstName = p.User?.FirstName ?? "",
+                    LastName = p.User?.LastName ?? "",
+                    Email = p.User?.Email ?? "",
+                    DateOfBirth = p.DateOfBirth,
+                    Gender = p.Gender,
+                    BloodType = p.BloodType,
+                    Allergies = p.Allergies,
+                    EmergencyContactName = p.EmergencyContactName,
+                    EmergencyContactPhone = p.EmergencyContactPhone,
+                    EmergencyContactRelationship = p.EmergencyContactRelationship,
+                    SharedRecordsCount = pd.SharedRecordsCount,
+                    LatestSharedRecordDate = pd.LatestRecordDate
+                };
+            })
+            .OrderByDescending(p => p.LatestSharedRecordDate)
+            .ToList();
+
+        return (true, "Patients retrieved successfully.", result);
     }
 
     public async Task<(bool Success, string Message)> UpdateRecordMetadataAsync(
@@ -658,8 +749,18 @@ public class MedicalRecordsService : IMedicalRecordsService
                 .Select(d => d.Id)
                 .FirstOrDefaultAsync();
 
-            // Doctors can access records in Pending state, but ONLY if assigned to them.
-            return record.State == RecordState.Pending && record.AssignedDoctorId == doctorId;
+            if (doctorId == Guid.Empty) return false;
+
+            // Case A: Record is Pending and assigned to this doctor for review.
+            if (record.State == RecordState.Pending && record.AssignedDoctorId == doctorId)
+                return true;
+
+            // Case B: Record is Certified and this doctor is the one who certified it.
+            if (record.State == RecordState.Certified)
+            {
+                return await _context.RecordCertifications
+                    .AnyAsync(c => c.RecordId == record.Id && c.DoctorId == doctorId && c.IsValid);
+            }
         }
 
         return false;
@@ -708,7 +809,11 @@ public class MedicalRecordsService : IMedicalRecordsService
             CertifiedBy = cert?.Doctor?.User?.FirstName + " " + cert?.Doctor?.User?.LastName,
             CertifiedAt = cert?.SignedAt,
             Version = record.Version,
-            CanDownload = canDownload
+            CanDownload = canDownload,
+            
+            // New fields
+            RelativeTimeString = DateGroupingHelper.GetRelativeTimeString(record.UploadedAt),
+            TimePeriod = DateGroupingHelper.GetTimePeriodLabel(record.UploadedAt)
         };
     }
 
@@ -748,7 +853,7 @@ public class MedicalRecordsService : IMedicalRecordsService
             .Where(a => a.PatientId == patientId
                      && a.ScheduledAt >= now
                      && a.ScheduledAt <= now.AddDays(30)
-                     && (a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.Requested))
+                     && (a.Status == AppointmentStatus.Confirmed || a.Status == AppointmentStatus.Scheduled))
             .OrderBy(a => a.ScheduledAt)
             .FirstOrDefaultAsync();
 

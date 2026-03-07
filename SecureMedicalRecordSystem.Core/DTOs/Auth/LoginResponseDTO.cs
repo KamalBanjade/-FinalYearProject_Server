@@ -14,6 +14,8 @@ public class LoginResponseDTO
     public bool RequiresPasswordChange { get; set; }
     public DateTime ExpiresAt { get; set; }
     public string? DeviceToken { get; set; }
+    public DateTime? DateOfBirth { get; set; }
+    public string? BloodType { get; set; }
 
     // NEW: Device trust information
     public bool TrustedDevice { get; set; } = false; // Login via trusted device

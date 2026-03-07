@@ -8,11 +8,15 @@ public interface IMedicalRecordsService
         Guid patientId, 
         UploadMedicalRecordDTO uploadDto);
 
-    Task<(bool Success, string Message, Stream? FileStream, string? FileName, string? ContentType)> DownloadRecordAsync(
-        Guid recordId, 
+    /// <summary>
+    /// Streaming variant — returns a live pipelined CryptoStream (no buffering).
+    /// The FileStream must be disposed by the caller (handled by ASP.NET's FileStreamResult).
+    /// </summary>
+    Task<(bool Success, string Message, Stream? FileStream, string? FileName, string? ContentType)> StreamDownloadRecordAsync(
+        Guid recordId,
         Guid requestingUserId);
 
-    Task<(bool Success, string Message, List<MedicalRecordResponseDTO>? Data)> GetPatientRecordsAsync(
+    Task<(bool Success, string Message, GroupedMedicalRecordsDTO? Data)> GetPatientRecordsAsync(
         Guid patientId, 
         Guid requestingUserId);
 
@@ -24,6 +28,9 @@ public interface IMedicalRecordsService
         Guid doctorUserId);
 
     Task<(bool Success, string Message, List<MedicalRecordResponseDTO>? Data)> GetCertifiedRecordsForDoctorAsync(
+        Guid doctorUserId);
+
+    Task<(bool Success, string Message, List<PatientListResponseDTO>? Data)> GetPatientsForDoctorAsync(
         Guid doctorUserId);
 
     Task<(bool Success, string Message)> UpdateRecordMetadataAsync(

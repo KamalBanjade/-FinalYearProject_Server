@@ -304,7 +304,11 @@ public class AuthService : IAuthService
 
     public async Task<(bool Success, string Message, LoginResponseDTO? Data)> LoginAsync(LoginRequestDTO request)
     {
-        var user = await _userManager.FindByEmailAsync(request.Email);
+        // 1. Find user - include PatientProfile for popover data
+        var user = await _userManager.Users
+            .Include(u => u.PatientProfile)
+            .FirstOrDefaultAsync(u => u.Email == request.Email);
+        
         if (user == null)
         {
             return (false, "Invalid email or password.", null);
@@ -424,6 +428,8 @@ public class AuthService : IAuthService
                     TrustedDevice = true, // NEW field
                     RequiresPasswordChange = user.RequiresPasswordChange,
                     TOTPSetupCompleted = user.TOTPSetupCompleted,
+                    DateOfBirth = user.PatientProfile?.DateOfBirth,
+                    BloodType = user.PatientProfile?.BloodType,
                     ExpiresAt = DateTime.UtcNow.AddDays(expirationDaysTrusted)
                 });
             }
@@ -499,6 +505,8 @@ public class AuthService : IAuthService
             DeviceTrusted = request.RememberDevice, // NEW field
             TOTPSetupCompleted = user.TOTPSetupCompleted,
             RequiresPasswordChange = user.RequiresPasswordChange,
+            DateOfBirth = user.PatientProfile?.DateOfBirth,
+            BloodType = user.PatientProfile?.BloodType,
             ExpiresAt = DateTime.UtcNow.AddDays(expirationDays)
         });
     }
@@ -618,7 +626,9 @@ public class AuthService : IAuthService
 
     public async Task<ApplicationUser?> GetUserByIdAsync(Guid userId)
     {
-        return await _userManager.FindByIdAsync(userId.ToString());
+        return await _userManager.Users
+            .Include(u => u.PatientProfile)
+            .FirstOrDefaultAsync(u => u.Id == userId);
     }
 
     public async Task<ApplicationUser?> GetUserByEmailAsync(string email)

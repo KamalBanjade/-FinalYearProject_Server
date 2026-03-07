@@ -23,9 +23,17 @@ public interface ITigrisStorageService
 
     /// <summary>
     /// Downloads an encrypted file stream from Tigris by its object key.
+    /// Buffers into MemoryStream for safe disposal. Use OpenDownloadStreamAsync for streaming.
     /// </summary>
     /// <returns>A readable stream of the encrypted file bytes.</returns>
     Task<Stream> DownloadFileAsync(string objectKey);
+
+    /// <summary>
+    /// Opens a raw S3 response stream for direct pipelined streaming without buffering.
+    /// The caller must dispose the returned stream (which disposes the S3 response).
+    /// Use for View/Download endpoints where pipelined streaming is required.
+    /// </summary>
+    Task<Stream> OpenDownloadStreamAsync(string objectKey);
 
     /// <summary>
     /// Deletes a file from Tigris storage.
