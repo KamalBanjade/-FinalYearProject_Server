@@ -55,7 +55,15 @@ public class DoctorAvailabilityController : ControllerBase
         if (!TimeSpan.TryParse(request.StartTime, out var start) || !TimeSpan.TryParse(request.EndTime, out var end))
             return BadRequest(ApiResponse<object>.FailureResult("Invalid time format. Use HH:mm."));
 
-        var result = await _availabilityService.SetWorkingHoursAsync(user.DoctorProfile.Id, request.DayOfWeek, start, end);
+        TimeSpan? breakStart = null;
+        if (!string.IsNullOrEmpty(request.BreakStartTime) && TimeSpan.TryParse(request.BreakStartTime, out var bStart))
+            breakStart = bStart;
+
+        TimeSpan? breakEnd = null;
+        if (!string.IsNullOrEmpty(request.BreakEndTime) && TimeSpan.TryParse(request.BreakEndTime, out var bEnd))
+            breakEnd = bEnd;
+
+        var result = await _availabilityService.SetWorkingHoursAsync(user.DoctorProfile.Id, request.DayOfWeek, start, end, breakStart, breakEnd);
         
         if (!result.Success)
             return BadRequest(ApiResponse<object>.FailureResult(result.Message));
@@ -98,5 +106,18 @@ public class DoctorAvailabilityController : ControllerBase
     {
         var result = await _availabilityService.GetAvailableSlotsWithRulesAsync(doctorId, date, duration);
         return Ok(ApiResponse<List<TimeSlotDTO>>.SuccessResult(result, "Available slots retrieved successfully."));
+    }
+
+    [HttpGet("calendar/{doctorId}")]
+    [AllowAnonymous] // Allow patients to check availability
+    public async Task<ActionResult<ApiResponse<List<DailyAvailabilityDTO>>>> GetMonthlyCalendar(
+        Guid doctorId, 
+        [FromQuery] string month) // Expected: "YYYY-MM"
+    {
+        if (!DateTime.TryParse($"{month}-01", out var parsed))
+            return BadRequest(ApiResponse<List<DailyAvailabilityDTO>>.FailureResult("Invalid month format. Use YYYY-MM."));
+
+        var result = await _availabilityService.GetMonthlyAvailabilityAsync(doctorId, parsed.Year, parsed.Month);
+        return Ok(ApiResponse<List<DailyAvailabilityDTO>>.SuccessResult(result, "Monthly availability retrieved."));
     }
 }

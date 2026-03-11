@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using SecureMedicalRecordSystem.Core.DTOs.HealthRecords;
 using SecureMedicalRecordSystem.Core.DTOs.QR;
 using SecureMedicalRecordSystem.Core.Entities;
 using SecureMedicalRecordSystem.Core.Enums;
@@ -17,6 +18,7 @@ public class AccessSessionService : IAccessSessionService
     private readonly ITotpService _totpService;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IAuditLogService _auditLogService;
+    private readonly ITemplateService _templateService;
     private readonly ILogger<AccessSessionService> _logger;
 
     public AccessSessionService(
@@ -25,6 +27,7 @@ public class AccessSessionService : IAccessSessionService
         ITotpService totpService,
         UserManager<ApplicationUser> userManager,
         IAuditLogService auditLogService,
+        ITemplateService templateService,
         ILogger<AccessSessionService> logger)
     {
         _context = context;
@@ -32,6 +35,7 @@ public class AccessSessionService : IAccessSessionService
         _totpService = totpService;
         _userManager = userManager;
         _auditLogService = auditLogService;
+        _templateService = templateService;
         _logger = logger;
     }
 
@@ -39,7 +43,8 @@ public class AccessSessionService : IAccessSessionService
         string token, 
         string? totpCode,
         string ipAddress,
-        string userAgent)
+        string userAgent,
+        Guid? scannerUserId = null)
     {
         // 1. Validate QR token
         var (isValid, qrToken) = await _qrTokenService.ValidateTokenAsync(token);
@@ -101,7 +106,48 @@ public class AccessSessionService : IAccessSessionService
             session.Id.ToString(),
             AuditSeverity.Info);
 
-        // 7. Return session DTO
+        // 7. Identify scanner role and permissions
+        string scannerRole = "public";
+        var permissions = new List<string> { "view" };
+        var suggestedTemplates = new List<SuggestedTemplateDTO>();
+
+        if (scannerUserId.HasValue)
+        {
+            var scannerUser = await _userManager.FindByIdAsync(scannerUserId.Value.ToString());
+            if (scannerUser != null)
+            {
+                if (scannerUser.Id == patient.UserId)
+                {
+                    scannerRole = "patient";
+                }
+                else
+                {
+                    var doctor = await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == scannerUserId.Value);
+                    if (doctor != null)
+                    {
+                        scannerRole = "doctor";
+                        permissions.Add("create_record");
+
+                        // Get template suggestions based on patient history
+                        // For Day 9, we'll use a simplified version: get top 3 most used templates or 
+                        // if patient has specific patterns. 
+                        // In Phase 3 we defined SuggestTemplatesAsync, let's use it.
+                        var suggestionsResult = await _templateService.SuggestTemplatesAsync("", doctor.Id);
+                        if (suggestionsResult.Success && suggestionsResult.Data != null)
+                        {
+                            suggestedTemplates = suggestionsResult.Data.Select(t => new SuggestedTemplateDTO
+                            {
+                                Template = t,
+                                MatchScore = 90, // Placeholder
+                                MatchReason = "Relevant to patient history"
+                            }).Take(3).ToList();
+                        }
+                    }
+                }
+            }
+        }
+
+        // 8. Return session DTO
         return (true, "Session created", new AccessSessionDTO
         {
             SessionToken = session.SessionToken,
@@ -109,7 +155,10 @@ public class AccessSessionService : IAccessSessionService
             PatientName = $"{patient.User.FirstName} {patient.User.LastName}",
             TokenType = qrToken.TokenType.ToString(),
             ExpiresAt = session.ExpiresAt,
-            RemainingMinutes = (int)(session.ExpiresAt - DateTime.UtcNow).TotalMinutes
+            RemainingMinutes = (int)(session.ExpiresAt - DateTime.UtcNow).TotalMinutes,
+            ScannerRole = scannerRole,
+            Permissions = permissions,
+            SuggestedTemplates = suggestedTemplates
         });
     }
 

@@ -64,6 +64,15 @@ public class AdminController : ControllerBase
         return Ok(ApiResponse.SuccessResult(result.Data, result.Message));
     }
 
+    [HttpGet("doctors/{id}/profile")]
+    public async Task<IActionResult> GetDoctorExtendedProfile(Guid id)
+    {
+        var doctor = await _authService.GetDoctorEntityByIdAsync(id);
+        if (doctor == null) return NotFound(ApiResponse.FailureResult("Doctor not found."));
+        var profile = DoctorController.BuildExtendedProfileDTO(doctor);
+        return Ok(ApiResponse.SuccessResult(profile, "Extended profile retrieved."));
+    }
+
     [HttpPut("doctors/{id}")]
     public async Task<IActionResult> UpdateDoctor(Guid id, [FromBody] UpdateDoctorRequestDTO request)
     {

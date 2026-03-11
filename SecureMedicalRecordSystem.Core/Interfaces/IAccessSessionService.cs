@@ -15,7 +15,8 @@ public interface IAccessSessionService
         string token, 
         string? totpCode,
         string ipAddress,
-        string userAgent);
+        string userAgent,
+        Guid? scannerUserId = null);
 
     /// <summary>
     /// Validates an active access session by its unique session token.

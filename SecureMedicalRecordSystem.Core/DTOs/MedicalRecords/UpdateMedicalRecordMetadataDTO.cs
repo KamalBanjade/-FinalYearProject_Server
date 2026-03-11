@@ -11,4 +11,5 @@ public class UpdateMedicalRecordMetadataDTO
     public string? Description { get; set; }
 
     public DateTime? RecordDate { get; set; }
+    public string? Tags { get; set; }
 }

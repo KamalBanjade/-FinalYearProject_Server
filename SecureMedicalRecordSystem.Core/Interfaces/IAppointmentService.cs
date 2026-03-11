@@ -21,7 +21,12 @@ public interface IAppointmentService
     Task<(bool Success, string Message, List<AppointmentDTO>? Data)> GetDoctorAppointmentsAsync(
         Guid doctorId, 
         Guid requestingUserId, 
-        DateTime? date = null);
+        DateTime? date = null,
+        bool includeHistory = false);
+
+    Task<(bool Success, string Message, DoctorAppointmentStatsDTO? Data)> GetDoctorStatsAsync(
+        Guid doctorId,
+        Guid requestingUserId);
 
     Task<(bool Success, string Message)> CancelAppointmentAsync(
         Guid appointmentId, 

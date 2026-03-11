@@ -29,6 +29,7 @@ public class MedicalRecord : BaseEntity
     public string? Description { get; set; }
     public string? Notes { get; set; }
     public DateTime? RecordDate { get; set; }
+    public string? Tags { get; set; } // Comma-separated tags: "Blood Test, DM, Thyroid"
 
     // Versioning
     public int Version { get; set; } = 1;

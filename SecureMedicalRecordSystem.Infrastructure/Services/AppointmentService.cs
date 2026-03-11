@@ -203,16 +203,15 @@ public class AppointmentService : IAppointmentService
 
         if (appointment == null) return (false, "Appointment not found.", null);
 
-        // Security check: only involved parties can view
+        // Security check: only involved parties or admins can view
         var user = await _context.Users.FindAsync(requestingUserId);
-        var isAdmin = await _context.UserRoles.AnyAsync(ur => ur.UserId == requestingUserId && ur.RoleId == Guid.Parse("ADMIN_ROLE_ID_HERE")); // Placeholder logic for admin
+        var isAdmin = user?.Role == "Admin";
         
-        // Simpler check using Identity roles or just checking relationship
         if (appointment.Patient.UserId != requestingUserId && 
             appointment.Doctor.UserId != requestingUserId && 
-            user?.UserName != "admin@system.com") // Quick check for demo purposes
+            !isAdmin)
         {
-            // Note: Replace with proper policy check if needed
+            return (false, "You do not have permission to view this appointment.", null);
         }
 
         return (true, "Success", MapToDTO(appointment));
@@ -221,7 +220,8 @@ public class AppointmentService : IAppointmentService
     public async Task<(bool Success, string Message, List<AppointmentDTO>? Data)> GetDoctorAppointmentsAsync(
         Guid doctorId, 
         Guid requestingUserId, 
-        DateTime? date = null)
+        DateTime? date = null,
+        bool includeHistory = false)
     {
         var doctor = await _context.Doctors.FindAsync(doctorId);
         if (doctor == null) return (false, "Doctor not found.", null);
@@ -231,7 +231,11 @@ public class AppointmentService : IAppointmentService
             .Include(a => a.LinkedRecords).ThenInclude(ar => ar.MedicalRecord)
             .Where(a => a.DoctorId == doctorId && a.IsActive);
 
-        if (date.HasValue)
+        if (includeHistory)
+        {
+            // No date filtering, return all
+        }
+        else if (date.HasValue)
         {
             var startOfDay = date.Value.Date;
             var endOfDay = startOfDay.AddDays(1);
@@ -244,8 +248,36 @@ public class AppointmentService : IAppointmentService
             query = query.Where(a => a.AppointmentDate >= today && a.AppointmentDate <= futureDate);
         }
 
-        var appointments = await query.OrderBy(a => a.AppointmentDate).ToListAsync();
+        var appointments = await query.OrderByDescending(a => a.AppointmentDate).ToListAsync();
         return (true, "Success", appointments.Select(MapToDTO).ToList());
+    }
+
+    public async Task<(bool Success, string Message, DoctorAppointmentStatsDTO? Data)> GetDoctorStatsAsync(
+        Guid doctorId,
+        Guid requestingUserId)
+    {
+        var doctor = await _context.Doctors.FindAsync(doctorId);
+        if (doctor == null) return (false, "Doctor not found.", null);
+
+        var now = DateTime.UtcNow;
+        var today = now.Date;
+        var endOfToday = today.AddDays(1);
+
+        var appointments = await _context.Appointments
+            .Where(a => a.DoctorId == doctorId && a.IsActive)
+            .ToListAsync();
+
+        var stats = new DoctorAppointmentStatsDTO
+        {
+            TotalAppointments = appointments.Count,
+            CompletedAppointments = appointments.Count(a => a.Status == AppointmentStatus.Completed),
+            UpcomingAppointments = appointments.Count(a => a.Status == AppointmentStatus.Confirmed && a.AppointmentDate > now),
+            CancelledAppointments = appointments.Count(a => a.Status == AppointmentStatus.Cancelled),
+            PendingConfirmation = appointments.Count(a => a.Status == AppointmentStatus.Scheduled && a.AppointmentDate > now),
+            TodayAppointments = appointments.Count(a => a.AppointmentDate >= today && a.AppointmentDate < endOfToday && !a.IsCancelled)
+        };
+
+        return (true, "Success", stats);
     }
 
     public async Task<(bool Success, string Message)> CancelAppointmentAsync(
@@ -652,16 +684,31 @@ public class AppointmentService : IAppointmentService
 
     private AppointmentDTO MapToDTO(Appointment appointment)
     {
+        var now = DateTime.UtcNow;
+        var displayStatus = appointment.Status.ToString();
+
+        // Dynamic status transition: Scheduled/Confirmed/InProgress -> Overdue if time exceeded
+        if (!appointment.IsCompleted && !appointment.IsCancelled && 
+            (appointment.Status == AppointmentStatus.Scheduled || 
+             appointment.Status == AppointmentStatus.Confirmed || 
+             appointment.Status == AppointmentStatus.InProgress) &&
+            now > appointment.AppointmentDate.AddMinutes(appointment.Duration))
+        {
+            displayStatus = "Overdue";
+        }
+
         return new AppointmentDTO
         {
             Id = appointment.Id,
             PatientId = appointment.PatientId,
             PatientName = appointment.Patient?.User != null ? $"{appointment.Patient.User.FirstName} {appointment.Patient.User.LastName}" : "Unknown",
+            PatientAge = appointment.Patient != null ? (DateTime.UtcNow.Year - appointment.Patient.DateOfBirth.Year) : 0,
+            PatientGender = appointment.Patient?.Gender ?? "Unknown",
             DoctorId = appointment.DoctorId,
             DoctorName = appointment.Doctor?.User != null ? $"Dr. {appointment.Doctor.User.FirstName} {appointment.Doctor.User.LastName}" : "Unknown",
             DoctorDepartment = appointment.Doctor?.Department?.Name ?? "General",
             AppointmentDate = appointment.AppointmentDate,
-            Status = appointment.Status.ToString(),
+            Status = displayStatus,
             ReasonForVisit = appointment.ReasonForVisit,
             ConsultationNotes = appointment.ConsultationNotes,
             Duration = appointment.Duration,

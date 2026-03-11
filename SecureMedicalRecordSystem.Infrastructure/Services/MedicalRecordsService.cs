@@ -107,6 +107,7 @@ public class MedicalRecordsService : IMedicalRecordsService
                 RecordType = uploadDto.RecordType,
                 Description = uploadDto.Description,
                 RecordDate = uploadDto.RecordDate ?? DateTime.UtcNow,
+                Tags = uploadDto.Tags,
                 State = RecordState.Pending,
                 Version = 1,
                 IsLatestVersion = true,
@@ -180,6 +181,53 @@ public class MedicalRecordsService : IMedicalRecordsService
             _logger.LogError(ex, "[PERF] [Stream] CRITICAL FAILURE during stream setup for record {Id}", recordId);
             return (false, "An error occurred during streaming.", null, null, null);
         }
+    }
+
+    public async Task<(bool Success, string Message, List<MedicalRecordResponseDTO>? Data)> GetPatientRecordsFlatAsync(
+        Guid patientId,
+        Guid requestingUserId)
+    {
+        // Access check: a Patient can only see their own records.
+        var requestingUserRole = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == requestingUserId)
+            .Select(u => u.Role)
+            .FirstOrDefaultAsync();
+
+        if (requestingUserRole == null) return (false, "User not found.", null);
+
+        if (requestingUserRole == "Patient")
+        {
+            var ownerUserId = await _context.Patients
+                .AsNoTracking()
+                .Where(p => p.Id == patientId)
+                .Select(p => p.UserId)
+                .FirstOrDefaultAsync();
+
+            if (requestingUserId != ownerUserId)
+                return (false, "Unauthorized access.", null);
+        }
+
+        var records = await _context.MedicalRecords
+            .AsNoTracking()
+            .Where(r => r.PatientId == patientId && !r.IsDeleted)
+            .Include(r => r.Patient)
+                .ThenInclude(p => p.User)
+            .Include(r => r.AssignedDoctor)
+                .ThenInclude(d => d.User)
+            .Include(r => r.Certifications)
+                .ThenInclude(c => c.Doctor)
+                    .ThenInclude(d => d.User)
+            .OrderByDescending(r => r.UploadedAt)
+            .ToListAsync();
+
+        var patientName = records.FirstOrDefault()?.Patient?.User != null 
+            ? $"{records[0].Patient.User.FirstName} {records[0].Patient.User.LastName}" 
+            : "Patient";
+
+        var dtos = records.Select(r => MapToDto(r, patientName, true)).ToList();
+        
+        return (true, "Success", dtos);
     }
 
     public async Task<(bool Success, string Message, GroupedMedicalRecordsDTO? Data)> GetPatientRecordsAsync(
@@ -345,6 +393,47 @@ public class MedicalRecordsService : IMedicalRecordsService
         return (true, "Success", dtos);
     }
 
+    public async Task<(bool Success, string Message, PatientListResponseDTO? Data)> GetPatientByIdForDoctorAsync(Guid patientId, Guid doctorUserId)
+    {
+        var doctor = await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == doctorUserId);
+        if (doctor == null)
+            return (false, "Doctor profile not found.", null);
+
+        // Fetch patient + user info
+        var p = await _context.Patients
+            .Include(p => p.User)
+            .FirstOrDefaultAsync(p => p.Id == patientId);
+
+        if (p == null)
+            return (false, "Patient not found.", null);
+
+        // Get record stats for this specific patient
+        var sharedStats = await _context.MedicalRecords
+            .AsNoTracking()
+            .Where(r => r.PatientId == p.Id && r.AssignedDoctorId == doctor.Id && !r.IsDeleted)
+            .Select(r => r.UploadedAt)
+            .ToListAsync();
+
+        var result = new PatientListResponseDTO
+        {
+            Id = p.Id,
+            FirstName = p.User?.FirstName ?? "",
+            LastName = p.User?.LastName ?? "",
+            Email = p.User?.Email ?? "",
+            DateOfBirth = p.DateOfBirth,
+            Gender = p.Gender,
+            BloodType = p.BloodType,
+            Allergies = p.Allergies,
+            EmergencyContactName = p.EmergencyContactName,
+            EmergencyContactPhone = p.EmergencyContactPhone,
+            EmergencyContactRelationship = p.EmergencyContactRelationship,
+            SharedRecordsCount = sharedStats.Count,
+            LatestSharedRecordDate = sharedStats.Any() ? sharedStats.Max() : null
+        };
+
+        return (true, "Patient retrieved successfully.", result);
+    }
+
     public async Task<(bool Success, string Message, List<PatientListResponseDTO>? Data)> GetPatientsForDoctorAsync(Guid doctorUserId)
     {
         var doctor = await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == doctorUserId);
@@ -417,6 +506,7 @@ public class MedicalRecordsService : IMedicalRecordsService
         if (updateDto.RecordType != null) record.RecordType = updateDto.RecordType;
         if (updateDto.Description != null) record.Description = updateDto.Description;
         if (updateDto.RecordDate != null) record.RecordDate = updateDto.RecordDate.Value;
+        if (updateDto.Tags != null) record.Tags = updateDto.Tags;
 
         record.LastModifiedAt = DateTime.UtcNow;
         record.UpdatedAt = DateTime.UtcNow;
@@ -751,16 +841,22 @@ public class MedicalRecordsService : IMedicalRecordsService
 
             if (doctorId == Guid.Empty) return false;
 
-            // Case A: Record is Pending and assigned to this doctor for review.
-            if (record.State == RecordState.Pending && record.AssignedDoctorId == doctorId)
+            // 1. Direct Access: If the doctor is assigned to this record, they can always see it.
+            if (record.AssignedDoctorId == doctorId) return true;
+
+            // 2. Direct Access: If this doctor certified this record.
+            if (await _context.RecordCertifications.AnyAsync(c => c.RecordId == record.Id && c.DoctorId == doctorId && c.IsValid))
                 return true;
 
-            // Case B: Record is Certified and this doctor is the one who certified it.
-            if (record.State == RecordState.Certified)
-            {
-                return await _context.RecordCertifications
-                    .AnyAsync(c => c.RecordId == record.Id && c.DoctorId == doctorId && c.IsValid);
-            }
+            // 3. Clinical Relationship: If the doctor has an appointment or another record with this patient,
+            // they gain "care team" access to view the patient's full history.
+            var hasRelationship = await _context.Appointments.AnyAsync(a => a.PatientId == record.PatientId && a.DoctorId == doctorId)
+                                || await _context.MedicalRecords.AnyAsync(r => r.PatientId == record.PatientId && r.AssignedDoctorId == doctorId && !r.IsDeleted);
+            
+            if (hasRelationship) return true;
+
+            // 4. Emergency Access: Any doctor can view emergency records.
+            if (record.State == RecordState.Emergency) return true;
         }
 
         return false;
@@ -799,7 +895,9 @@ public class MedicalRecordsService : IMedicalRecordsService
             StateLabel = stateLabel,
             RejectionReason = rejectionReason,
             UploadedAt = record.UploadedAt,
-            UploadedBy = uploaderName,
+            UploadedBy = (record.RecordType != null && record.RecordType.Contains("Auto-Generated") && record.AssignedDoctor?.User != null)
+                ? "Dr. " + record.AssignedDoctor.User.FirstName + " " + record.AssignedDoctor.User.LastName
+                : uploaderName,
             PatientName = record.Patient?.User?.FirstName + " " + record.Patient?.User?.LastName,
             AssignedDoctorName = record.AssignedDoctor != null 
                 ? "Dr. " + record.AssignedDoctor.User?.FirstName + " " + record.AssignedDoctor.User?.LastName 
@@ -813,7 +911,8 @@ public class MedicalRecordsService : IMedicalRecordsService
             
             // New fields
             RelativeTimeString = DateGroupingHelper.GetRelativeTimeString(record.UploadedAt),
-            TimePeriod = DateGroupingHelper.GetTimePeriodLabel(record.UploadedAt)
+            TimePeriod = DateGroupingHelper.GetTimePeriodLabel(record.UploadedAt),
+            Tags = record.Tags
         };
     }
 

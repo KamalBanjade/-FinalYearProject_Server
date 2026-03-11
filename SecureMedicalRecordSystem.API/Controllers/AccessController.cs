@@ -116,13 +116,8 @@ public class AccessController : ControllerBase
             qrToken.Id.ToString(),
             AuditSeverity.Warning);
 
-        // 6. Return emergency data
-        return Ok(ApiResponse.SuccessResult(new
-        {
-            data = emergencyData,
-            accessType = "EMERGENCY",
-            timestamp = DateTime.UtcNow
-        }, "Emergency medical information retrieved successfully."));
+        // 6. Return emergency data directly as payload
+        return Ok(ApiResponse.SuccessResult(emergencyData, "Emergency medical information retrieved successfully."));
     }
 
     [HttpPost("{token}/verify")]
@@ -131,11 +126,15 @@ public class AccessController : ControllerBase
         var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var userAgent = Request.Headers["User-Agent"].ToString() ?? "unknown";
 
+        var scannerUserIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        Guid? scannerUserId = string.IsNullOrEmpty(scannerUserIdStr) ? null : Guid.Parse(scannerUserIdStr);
+
         var (success, message, session) = await _accessSessionService.CreateSessionAsync(
             token,
             dto.TotpCode,
             ipAddress,
-            userAgent);
+            userAgent,
+            scannerUserId);
 
         if (!success || session == null)
         {

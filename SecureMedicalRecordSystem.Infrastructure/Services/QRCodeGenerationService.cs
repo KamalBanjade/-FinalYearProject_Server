@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using QRCoder;
 using SecureMedicalRecordSystem.Core.Enums;
@@ -8,12 +7,12 @@ namespace SecureMedicalRecordSystem.Infrastructure.Services;
 
 public class QRCodeGenerationService : IQRCodeGenerationService
 {
-    private readonly IConfiguration _configuration;
+    private readonly ILocalUrlProvider _urlProvider;
     private readonly ILogger<QRCodeGenerationService> _logger;
 
-    public QRCodeGenerationService(IConfiguration configuration, ILogger<QRCodeGenerationService> logger)
+    public QRCodeGenerationService(ILocalUrlProvider urlProvider, ILogger<QRCodeGenerationService> logger)
     {
-        _configuration = configuration;
+        _urlProvider = urlProvider;
         _logger = logger;
     }
 
@@ -51,7 +50,7 @@ public class QRCodeGenerationService : IQRCodeGenerationService
 
     public string BuildAccessUrl(string token, QRTokenType tokenType)
     {
-        string baseUrl = _configuration["ApplicationUrls:FrontendUrl"] ?? "http://localhost:3000";
+        string baseUrl = _urlProvider.FrontendBaseUrl;
 
         return tokenType switch
         {

@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using SecureMedicalRecordSystem.API.Authorization;
 using SecureMedicalRecordSystem.Core.DTOs;
+using SecureMedicalRecordSystem.Core.DTOs.Doctor;
 using SecureMedicalRecordSystem.Core.Entities;
 using SecureMedicalRecordSystem.Infrastructure.Data;
 using SecureMedicalRecordSystem.Core.Interfaces;
@@ -59,6 +60,7 @@ public class PatientController : ControllerBase
             patient.User?.FirstName,
             patient.User?.LastName,
             patient.User?.Email,
+            patient.User?.PhoneNumber,
             patient.DateOfBirth,
             patient.Gender,
             patient.BloodType,
@@ -372,6 +374,26 @@ public class PatientController : ControllerBase
             new { doctorId = doctor.Id, doctorName = $"Dr. {doctor.User.FirstName} {doctor.User.LastName}" },
             $"Dr. {doctor.User.FirstName} {doctor.User.LastName} set as your primary doctor."));
     }
+
+    [HttpGet("doctors/{doctorId}")]
+    public async Task<IActionResult> GetDoctorById(Guid doctorId)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return Unauthorized(ApiResponse.FailureResult("Invalid session."));
+
+        var doctor = await _context.Doctors
+            .Include(d => d.User)
+            .Include(d => d.Department)
+            .FirstOrDefaultAsync(d => d.Id == doctorId && !d.IsDeleted);
+
+        if (doctor == null)
+            return NotFound(ApiResponse.FailureResult("Doctor not found."));
+
+        var profile = DoctorController.BuildExtendedProfileDTO(doctor);
+        return Ok(ApiResponse.SuccessResult(profile, "Doctor profile retrieved."));
+    }
+
     private async Task<Patient?> GetCurrentPatientAsync()
     {
         var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);

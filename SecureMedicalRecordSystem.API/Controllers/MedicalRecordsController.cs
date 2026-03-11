@@ -97,15 +97,32 @@ public class MedicalRecordsController : ControllerBase
         var userId = GetUserId();
         if (userId == Guid.Empty) return Unauthorized(ApiResponse.FailureResult("Invalid session."));
 
-        var result = await _medicalRecordsService.GetPatientRecordsAsync(patientId, userId);
-        
-        if (!result.Success) 
+        bool success;
+        string message;
+        object? data;
+
+        if (User.IsInRole("Doctor"))
         {
-            if (result.Message == "Unauthorized access.") return Forbid();
-            return BadRequest(ApiResponse.FailureResult(result.Message));
+            var flatResult = await _medicalRecordsService.GetPatientRecordsFlatAsync(patientId, userId);
+            success = flatResult.Success;
+            message = flatResult.Message;
+            data = flatResult.Data;
+        }
+        else
+        {
+            var groupedResult = await _medicalRecordsService.GetPatientRecordsAsync(patientId, userId);
+            success = groupedResult.Success;
+            message = groupedResult.Message;
+            data = groupedResult.Data;
+        }
+        
+        if (!success) 
+        {
+            if (message == "Unauthorized access.") return Forbid();
+            return BadRequest(ApiResponse.FailureResult(message));
         }
 
-        return Ok(ApiResponse.SuccessResult(result.Data, result.Message));
+        return Ok(ApiResponse.SuccessResult(data, message));
     }
 
     [HttpGet("{recordId}")]

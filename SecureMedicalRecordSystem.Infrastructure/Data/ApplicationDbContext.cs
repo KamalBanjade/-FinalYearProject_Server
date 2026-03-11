@@ -23,6 +23,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<AccessSession> AccessSessions => Set<AccessSession>();
     public DbSet<TrustedDevice> TrustedDevices => Set<TrustedDevice>();
     public DbSet<DoctorAvailability> DoctorAvailabilities => Set<DoctorAvailability>();
+    public DbSet<PatientHealthRecord> PatientHealthRecords => Set<PatientHealthRecord>();
+    public DbSet<HealthAttribute> HealthAttributes => Set<HealthAttribute>();
+    public DbSet<Template> Templates => Set<Template>();
+    public DbSet<TemplateUsageHistory> TemplateUsageHistory => Set<TemplateUsageHistory>();
+    public DbSet<TemplateVersionHistory> TemplateVersionHistory => Set<TemplateVersionHistory>();
+    public DbSet<DesktopSession> DesktopSessions => Set<DesktopSession>();
+    public DbSet<MobileScannerPairing> MobileScannerPairings => Set<MobileScannerPairing>();
+    public DbSet<ScanHistory> ScanHistories => Set<ScanHistory>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -289,6 +297,185 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         modelBuilder.Entity<RecordCertification>()
             .HasIndex(c => c.RecordId)
             .HasDatabaseName("IX_RecordCertifications_RecordId");
+
+        // --------------------------------------------------------
+        // STRUCTURED DATA ENTRY SYSTEM (EAV PATTERN)
+        // --------------------------------------------------------
+
+        // PatientHealthRecord
+        modelBuilder.Entity<PatientHealthRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => e.DoctorId);
+            entity.HasIndex(e => e.RecordDate);
+            entity.HasIndex(e => e.TemplateId);
+            
+            entity.HasOne(e => e.Patient)
+                  .WithMany(p => p.StructuredRecords)
+                  .HasForeignKey(e => e.PatientId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            
+            entity.HasOne(e => e.Doctor)
+                  .WithMany(d => d.StructuredRecords)
+                  .HasForeignKey(e => e.DoctorId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            
+            entity.HasOne(e => e.Template)
+                  .WithMany()
+                  .HasForeignKey(e => e.TemplateId)
+                  .OnDelete(DeleteBehavior.SetNull);
+            
+            entity.Property(e => e.RecordDate).IsRequired();
+            entity.Property(e => e.IsStructured).HasDefaultValue(true);
+        });
+
+        // HealthAttribute
+        modelBuilder.Entity<HealthAttribute>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => e.RecordId);
+            entity.HasIndex(e => e.FieldName);
+            entity.HasIndex(e => e.SectionName);
+            entity.HasIndex(e => new { e.RecordId, e.DisplayOrder });
+            
+            entity.HasOne(e => e.HealthRecord)
+                  .WithMany(r => r.CustomAttributes)
+                  .HasForeignKey(e => e.RecordId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            
+            entity.Property(e => e.FieldName).IsRequired();
+            entity.Property(e => e.FieldLabel).IsRequired();
+            entity.Property(e => e.FieldValue).IsRequired();
+        });
+
+        // Template
+        modelBuilder.Entity<Template>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => e.CreatedBy);
+            entity.HasIndex(e => e.DepartmentId);
+            entity.HasIndex(e => e.Visibility);
+            entity.HasIndex(e => e.UsageCount);
+            entity.HasIndex(e => new { e.CreatedBy, e.TemplateName }).IsUnique();
+            
+            entity.HasOne(e => e.Creator)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreatedBy)
+                  .OnDelete(DeleteBehavior.Restrict);
+            
+            entity.HasOne(e => e.ParentTemplate)
+                  .WithMany()
+                  .HasForeignKey(e => e.BasedOnTemplateId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            
+            entity.Property(e => e.TemplateName).IsRequired();
+            entity.Property(e => e.TemplateSchema).IsRequired();
+            entity.Property(e => e.Version).HasDefaultValue(1);
+            entity.Property(e => e.UsageCount).HasDefaultValue(0);
+        });
+
+        // TemplateUsageHistory
+        modelBuilder.Entity<TemplateUsageHistory>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => e.TemplateId);
+            entity.HasIndex(e => e.DoctorId);
+            entity.HasIndex(e => e.UsedAt);
+            
+            entity.HasOne(e => e.Template)
+                  .WithMany(t => t.UsageHistory)
+                  .HasForeignKey(e => e.TemplateId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            
+            entity.HasOne(e => e.Record)
+                  .WithMany()
+                  .HasForeignKey(e => e.RecordId)
+                  .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // TemplateVersionHistory
+        modelBuilder.Entity<TemplateVersionHistory>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            
+            entity.HasIndex(e => new { e.TemplateId, e.Version });
+            entity.HasIndex(e => e.ChangedAt);
+            
+            entity.HasOne(e => e.Template)
+                  .WithMany()
+                  .HasForeignKey(e => e.TemplateId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // --------------------------------------------------------
+        // MOBILE SCANNER & DESKTOP PAIRING
+        // --------------------------------------------------------
+
+        // DesktopSession
+        modelBuilder.Entity<DesktopSession>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SessionId).IsUnique();
+            entity.HasIndex(e => e.DoctorId);
+            entity.HasIndex(e => new { e.SessionId, e.IsActive });
+            
+            entity.Property(e => e.SessionId).IsRequired().HasMaxLength(100);
+            
+            entity.HasOne(e => e.Doctor)
+                  .WithMany()
+                  .HasForeignKey(e => e.DoctorId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // MobileScannerPairing
+        modelBuilder.Entity<MobileScannerPairing>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.DesktopSessionId);
+            entity.HasIndex(e => e.DoctorId);
+            entity.HasIndex(e => e.MobileDeviceId);
+            
+            entity.Property(e => e.MobileDeviceId).IsRequired().HasMaxLength(100);
+            
+            entity.HasOne(e => e.DesktopSession)
+                  .WithMany(d => d.MobileScannerPairings)
+                  .HasForeignKey(e => e.DesktopSessionId)
+                  .OnDelete(DeleteBehavior.Cascade);
+                  
+            entity.HasOne(e => e.Doctor)
+                  .WithMany()
+                  .HasForeignKey(e => e.DoctorId)
+                  .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        // ScanHistory
+        modelBuilder.Entity<ScanHistory>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => e.DoctorId);
+            entity.HasIndex(e => e.DesktopSessionId);
+            
+            entity.HasOne(e => e.Patient)
+                  .WithMany()
+                  .HasForeignKey(e => e.PatientId)
+                  .OnDelete(DeleteBehavior.Restrict);
+                  
+            entity.HasOne(e => e.Doctor)
+                  .WithMany()
+                  .HasForeignKey(e => e.DoctorId)
+                  .OnDelete(DeleteBehavior.NoAction);
+                  
+            entity.HasOne(e => e.DesktopSession)
+                  .WithMany(d => d.ScanHistories)
+                  .HasForeignKey(e => e.DesktopSessionId)
+                  .OnDelete(DeleteBehavior.SetNull);
+        });
 
         // --------------------------------------------------------
         // DATA SEEDING

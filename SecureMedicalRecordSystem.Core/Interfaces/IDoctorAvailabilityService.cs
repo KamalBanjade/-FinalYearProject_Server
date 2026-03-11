@@ -8,7 +8,9 @@ public interface IDoctorAvailabilityService
         Guid doctorId, 
         DayOfWeek dayOfWeek, 
         TimeSpan startTime, 
-        TimeSpan endTime);
+        TimeSpan endTime,
+        TimeSpan? breakStartTime = null,
+        TimeSpan? breakEndTime = null);
 
     Task<(bool Success, string Message)> BlockTimeAsync(
         Guid doctorId, 
@@ -31,7 +33,12 @@ public interface IDoctorAvailabilityService
         int durationMinutes);
 
     Task<List<TimeSlotDTO>> GetAvailableSlotsWithRulesAsync(
-        Guid doctorId, 
+        Guid doctorId,
         DateTime date,
         int duration = 30);
+
+    Task<List<DailyAvailabilityDTO>> GetMonthlyAvailabilityAsync(
+        Guid doctorId,
+        int year,
+        int month);
 }

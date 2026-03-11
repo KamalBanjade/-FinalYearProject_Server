@@ -7,6 +7,8 @@ public class AppointmentDTO
     public Guid Id { get; set; }
     public Guid PatientId { get; set; }
     public string PatientName { get; set; } = string.Empty;
+    public int PatientAge { get; set; }
+    public string PatientGender { get; set; } = string.Empty;
     public Guid DoctorId { get; set; }
     public string DoctorName { get; set; } = string.Empty;
     public string DoctorDepartment { get; set; } = string.Empty;

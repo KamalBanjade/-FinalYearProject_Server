@@ -20,6 +20,10 @@ public interface IMedicalRecordsService
         Guid patientId, 
         Guid requestingUserId);
 
+    Task<(bool Success, string Message, List<MedicalRecordResponseDTO>? Data)> GetPatientRecordsFlatAsync(
+        Guid patientId,
+        Guid requestingUserId);
+
     Task<(bool Success, string Message, MedicalRecordResponseDTO? Data)> GetRecordDetailsAsync(
         Guid recordId, 
         Guid requestingUserId);
@@ -31,6 +35,10 @@ public interface IMedicalRecordsService
         Guid doctorUserId);
 
     Task<(bool Success, string Message, List<PatientListResponseDTO>? Data)> GetPatientsForDoctorAsync(
+        Guid doctorUserId);
+
+    Task<(bool Success, string Message, PatientListResponseDTO? Data)> GetPatientByIdForDoctorAsync(
+        Guid patientId,
         Guid doctorUserId);
 
     Task<(bool Success, string Message)> UpdateRecordMetadataAsync(

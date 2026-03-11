@@ -56,7 +56,7 @@ public class AppointmentsController : ControllerBase
 
     [HttpGet("doctor")]
     [Authorize(Policy = "DoctorPolicy")]
-    public async Task<ActionResult<ApiResponse<List<AppointmentDTO>>>> GetDoctorAppointments([FromQuery] DateTime? date = null)
+    public async Task<ActionResult<ApiResponse<List<AppointmentDTO>>>> GetDoctorAppointments([FromQuery] DateTime? date = null, [FromQuery] bool includeHistory = false)
     {
         var user = await _userManager.Users
             .Include(u => u.DoctorProfile)
@@ -65,11 +65,29 @@ public class AppointmentsController : ControllerBase
         if (user?.DoctorProfile == null)
             return BadRequest(ApiResponse<List<AppointmentDTO>>.FailureResult("Doctor profile not found."));
 
-        var result = await _appointmentService.GetDoctorAppointmentsAsync(user.DoctorProfile.Id, GetUserId(), date);
+        var result = await _appointmentService.GetDoctorAppointmentsAsync(user.DoctorProfile.Id, GetUserId(), date, includeHistory);
         if (!result.Success)
             return BadRequest(ApiResponse<List<AppointmentDTO>>.FailureResult(result.Message));
 
         return Ok(ApiResponse<List<AppointmentDTO>>.SuccessResult(result.Data, result.Message));
+    }
+
+    [HttpGet("doctor/stats")]
+    [Authorize(Policy = "DoctorPolicy")]
+    public async Task<ActionResult<ApiResponse<DoctorAppointmentStatsDTO>>> GetDoctorStats()
+    {
+        var user = await _userManager.Users
+            .Include(u => u.DoctorProfile)
+            .FirstOrDefaultAsync(u => u.Id == GetUserId());
+
+        if (user?.DoctorProfile == null)
+            return BadRequest(ApiResponse<DoctorAppointmentStatsDTO>.FailureResult("Doctor profile not found."));
+
+        var result = await _appointmentService.GetDoctorStatsAsync(user.DoctorProfile.Id, GetUserId());
+        if (!result.Success)
+            return BadRequest(ApiResponse<DoctorAppointmentStatsDTO>.FailureResult(result.Message));
+
+        return Ok(ApiResponse<DoctorAppointmentStatsDTO>.SuccessResult(result.Data, result.Message));
     }
 
     [HttpGet("{id}")]

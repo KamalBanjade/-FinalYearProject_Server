@@ -17,4 +17,5 @@ public class UploadMedicalRecordDTO
     public DateTime? RecordDate { get; set; }
 
     public Guid? AssignedDoctorId { get; set; }
+    public string? Tags { get; set; }
 }

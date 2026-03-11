@@ -4,11 +4,13 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using SecureMedicalRecordSystem.API.Authorization;
 using SecureMedicalRecordSystem.Core.DTOs;
+using SecureMedicalRecordSystem.Core.DTOs.Doctor;
 using SecureMedicalRecordSystem.Core.Entities;
 using SecureMedicalRecordSystem.Infrastructure.Data;
 using SecureMedicalRecordSystem.Core.Interfaces;
 using SecureMedicalRecordSystem.Core.DTOs.MedicalRecords;
 using System.Security.Claims;
+using System.Text.Json;
 
 namespace SecureMedicalRecordSystem.API.Controllers;
 
@@ -21,6 +23,11 @@ public class DoctorController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IMedicalRecordsService _medicalRecordsService;
     private readonly ILogger<DoctorController> _logger;
+
+    private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     public DoctorController(
         ApplicationDbContext context, 
@@ -39,70 +46,157 @@ public class DoctorController : ControllerBase
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-        {
             return Unauthorized(ApiResponse.FailureResult("Invalid session."));
-        }
 
         var doctor = await _context.Doctors
             .Include(d => d.User)
+            .Include(d => d.Department)
             .FirstOrDefaultAsync(d => d.UserId == userId);
 
         if (doctor == null)
-        {
             return NotFound(ApiResponse.FailureResult("Doctor profile not found."));
-        }
 
-        var profile = new
-        {
-            doctor.UserId,
-            doctor.User?.FirstName,
-            doctor.User?.LastName,
-            doctor.User?.Email,
-            doctor.NMCLicense,
-            doctor.Department,
-            doctor.Specialization,
-            doctor.HospitalAffiliation,
-            doctor.ContactNumber
-        };
-
+        var profile = BuildExtendedProfileDTO(doctor);
         return Ok(ApiResponse.SuccessResult(profile, "Profile retrieved successfully."));
     }
 
     [HttpPut("profile")]
-    public async Task<IActionResult> UpdateProfile([FromBody] UpdateDoctorProfileDTO updateDto)
+    public async Task<IActionResult> UpdateProfile([FromBody] UpdateDoctorExtendedProfileDTO updateDto)
     {
         var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
-        {
             return Unauthorized(ApiResponse.FailureResult("Invalid session."));
-        }
 
         var doctor = await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == userId);
         if (doctor == null) return NotFound(ApiResponse.FailureResult("Doctor profile not found."));
 
-        try {
-            if (!string.IsNullOrEmpty(updateDto.Department))
-            {
-                var deptEntity = await _context.Departments.FirstOrDefaultAsync(d => d.Name == updateDto.Department);
-                if (deptEntity == null)
-                {
-                    deptEntity = new Department { Name = updateDto.Department, Description = "Auto-generated" };
-                    _context.Departments.Add(deptEntity);
-                    await _context.SaveChangesAsync();
-                }
-                doctor.DepartmentId = deptEntity.Id;
-            }
+        try
+        {
+            // Basic fields
             if (!string.IsNullOrEmpty(updateDto.Specialization)) doctor.Specialization = updateDto.Specialization;
             if (!string.IsNullOrEmpty(updateDto.HospitalAffiliation)) doctor.HospitalAffiliation = updateDto.HospitalAffiliation;
             if (!string.IsNullOrEmpty(updateDto.ContactNumber)) doctor.ContactNumber = updateDto.ContactNumber;
 
+            // Extended identity
+            if (updateDto.Biography != null) doctor.Biography = updateDto.Biography;
+            if (updateDto.YearsOfExperience.HasValue) doctor.YearsOfExperience = updateDto.YearsOfExperience;
+            if (updateDto.ConsultationFee != null) doctor.ConsultationFee = updateDto.ConsultationFee;
+            if (updateDto.ConsultationHours != null) doctor.ConsultationHours = updateDto.ConsultationHours;
+            if (updateDto.ConsultationLocation != null) doctor.ConsultationLocation = updateDto.ConsultationLocation;
+            if (updateDto.AcceptsNewPatients.HasValue) doctor.AcceptsNewPatients = updateDto.AcceptsNewPatients;
+
+            // JSON sections — always update when provided (allows clearing with empty list)
+            if (updateDto.Education != null)
+                doctor.EducationJson = JsonSerializer.Serialize(updateDto.Education);
+            if (updateDto.Experience != null)
+                doctor.ExperienceJson = JsonSerializer.Serialize(updateDto.Experience);
+            if (updateDto.ProfessionalCertifications != null)
+                doctor.ProfessionalCertificationsJson = JsonSerializer.Serialize(updateDto.ProfessionalCertifications);
+            if (updateDto.Awards != null)
+                doctor.AwardsJson = JsonSerializer.Serialize(updateDto.Awards);
+            if (updateDto.Procedures != null)
+                doctor.ProceduresJson = JsonSerializer.Serialize(updateDto.Procedures);
+            if (updateDto.Languages != null)
+                doctor.LanguagesJson = JsonSerializer.Serialize(updateDto.Languages);
+            if (updateDto.CustomAttributes != null)
+                doctor.CustomAttributesJson = JsonSerializer.Serialize(updateDto.CustomAttributes);
+
             await _context.SaveChangesAsync();
-            return Ok(ApiResponse.SuccessResult((object?)null, "Profile updated successfully."));
+
+            // Return updated profile with new score
+            var updated = await _context.Doctors
+                .Include(d => d.User)
+                .Include(d => d.Department)
+                .FirstOrDefaultAsync(d => d.Id == doctor.Id);
+
+            var result = BuildExtendedProfileDTO(updated!);
+            return Ok(ApiResponse.SuccessResult(result, "Profile updated successfully."));
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to update doctor profile for userId {UserId}", userId);
             return BadRequest(ApiResponse.FailureResult($"Update failed: {ex.Message}"));
         }
+    }
+
+    // =====================
+    // SHARED HELPERS
+    // =====================
+
+    public static DoctorExtendedProfileDTO BuildExtendedProfileDTO(Doctor doctor)
+    {
+        var edu = DeserializeList<DoctorProfileSectionDTO>(doctor.EducationJson);
+        var exp = DeserializeList<DoctorProfileSectionDTO>(doctor.ExperienceJson);
+        var certs = DeserializeList<DoctorCertificationItemDTO>(doctor.ProfessionalCertificationsJson);
+        var awards = DeserializeList<DoctorProfileSectionDTO>(doctor.AwardsJson);
+        var procs = DeserializeList<string>(doctor.ProceduresJson);
+        var langs = DeserializeList<string>(doctor.LanguagesJson);
+        var custom = DeserializeList<DoctorCustomAttributeDTO>(doctor.CustomAttributesJson);
+
+        var (score, missing) = CalculateProfileCompletion(doctor, edu, exp, certs, langs);
+
+        return new DoctorExtendedProfileDTO
+        {
+            DoctorId = doctor.Id,
+            UserId = doctor.UserId,
+            FirstName = doctor.User?.FirstName ?? string.Empty,
+            LastName = doctor.User?.LastName ?? string.Empty,
+            Email = doctor.User?.Email ?? string.Empty,
+            NMCLicense = doctor.NMCLicense,
+            DepartmentId = doctor.DepartmentId.ToString(),
+            DepartmentName = doctor.Department?.Name ?? string.Empty,
+            Specialization = doctor.Specialization,
+            HospitalAffiliation = doctor.HospitalAffiliation,
+            ContactNumber = doctor.ContactNumber,
+            Biography = doctor.Biography,
+            YearsOfExperience = doctor.YearsOfExperience,
+            ConsultationFee = doctor.ConsultationFee,
+            ConsultationHours = doctor.ConsultationHours,
+            ConsultationLocation = doctor.ConsultationLocation,
+            AcceptsNewPatients = doctor.AcceptsNewPatients,
+            Education = edu,
+            Experience = exp,
+            ProfessionalCertifications = certs,
+            Awards = awards,
+            Procedures = procs,
+            Languages = langs,
+            CustomAttributes = custom,
+            ProfileCompletionScore = score,
+            MissingProfileFields = missing
+        };
+    }
+
+    private static List<T> DeserializeList<T>(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return new List<T>();
+        try { return JsonSerializer.Deserialize<List<T>>(json, _jsonOptions) ?? new List<T>(); }
+        catch { return new List<T>(); }
+    }
+
+    private static (int score, List<string> missing) CalculateProfileCompletion(
+        Doctor doctor,
+        List<DoctorProfileSectionDTO> edu,
+        List<DoctorProfileSectionDTO> exp,
+        List<DoctorCertificationItemDTO> certs,
+        List<string> langs)
+    {
+        var fieldWeights = new List<(string Field, bool HasValue, int Weight)>
+        {
+            ("Biography", !string.IsNullOrWhiteSpace(doctor.Biography), 20),
+            ("Education", edu.Any(), 15),
+            ("Experience", exp.Any(), 15),
+            ("Contact Number", !string.IsNullOrWhiteSpace(doctor.ContactNumber), 10),
+            ("Languages", langs.Any(), 10),
+            ("Certifications", certs.Any(), 10),
+            ("Hospital Affiliation", !string.IsNullOrWhiteSpace(doctor.HospitalAffiliation), 10),
+            ("Consultation Info", !string.IsNullOrWhiteSpace(doctor.ConsultationHours), 10),
+        };
+
+        int totalWeight = fieldWeights.Sum(f => f.Weight);
+        int earned = fieldWeights.Where(f => f.HasValue).Sum(f => f.Weight);
+        var missing = fieldWeights.Where(f => !f.HasValue).Select(f => f.Field).ToList();
+
+        return (totalWeight == 0 ? 0 : (int)Math.Round((double)earned / totalWeight * 100), missing);
     }
 
     [HttpGet("pending-records")]
@@ -147,6 +241,19 @@ public class DoctorController : ControllerBase
 
         var result = await _medicalRecordsService.GetPatientsForDoctorAsync(userId);
         if (!result.Success) return BadRequest(ApiResponse.FailureResult(result.Message));
+
+        return Ok(ApiResponse.SuccessResult(result.Data, result.Message));
+    }
+
+    [HttpGet("patients/{id}")]
+    public async Task<IActionResult> GetPatientInfo(Guid id)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return Unauthorized(ApiResponse.FailureResult("Invalid session."));
+
+        var result = await _medicalRecordsService.GetPatientByIdForDoctorAsync(id, userId);
+        if (!result.Success) return NotFound(ApiResponse.FailureResult(result.Message));
 
         return Ok(ApiResponse.SuccessResult(result.Data, result.Message));
     }

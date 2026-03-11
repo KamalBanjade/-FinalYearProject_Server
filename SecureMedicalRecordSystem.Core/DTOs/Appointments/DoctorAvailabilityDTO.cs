@@ -23,6 +23,12 @@ public class TimeSlotDTO
     public bool IsAvailable { get; set; }
 }
 
+public class DailyAvailabilityDTO
+{
+    public DateTime Date { get; set; }
+    public bool IsAvailable { get; set; }
+}
+
 public class SetWorkingHoursDTO
 {
     [Required]
@@ -33,6 +39,9 @@ public class SetWorkingHoursDTO
     
     [Required]
     public string EndTime { get; set; } // "17:00"
+
+    public string? BreakStartTime { get; set; } // "12:00"
+    public string? BreakEndTime { get; set; } // "13:00"
 }
 
 public class BlockTimeDTO

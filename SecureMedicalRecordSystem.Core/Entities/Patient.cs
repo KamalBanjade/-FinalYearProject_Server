@@ -14,6 +14,9 @@ public class Patient : BaseEntity
     [MaxLength(20)]
     public string Gender { get; set; } = string.Empty;
 
+    [MaxLength(20)]
+    public string? MedicalRecordNumber { get; set; }  // e.g. "MR-00012345"
+
     // Optional fields
     [MaxLength(10)]
     public string? BloodType { get; set; }
@@ -43,6 +46,7 @@ public class Patient : BaseEntity
     // Navigation
     public ApplicationUser User { get; set; } = null!;
     public ICollection<MedicalRecord> MedicalRecords { get; set; } = new List<MedicalRecord>();
+    public ICollection<PatientHealthRecord> StructuredRecords { get; set; } = new List<PatientHealthRecord>();
     public ICollection<Appointment> Appointments { get; set; } = new List<Appointment>();
     public ICollection<QRToken> QRTokens { get; set; } = new List<QRToken>();
 }

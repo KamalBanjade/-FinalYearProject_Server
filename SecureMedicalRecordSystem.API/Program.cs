@@ -18,6 +18,7 @@ using SecureMedicalRecordSystem.Infrastructure.Configuration;
 using SecureMedicalRecordSystem.Infrastructure.BackgroundJobs;
 using Serilog;
 using Serilog.Events;
+using Microsoft.AspNetCore.HttpOverrides;
 
 // Initial bootstrap logger
 Log.Logger = new LoggerConfiguration()
@@ -42,10 +43,17 @@ try
         .WriteTo.Console()
         .WriteTo.File("Logs/log-.txt", rollingInterval: RollingInterval.Day));
 
-    builder.Services.AddControllers();
+    builder.Services.AddControllers()
+        .AddJsonOptions(options =>
+        {
+            // Accept both string names ("Private") and integer values (0) for C# enums
+            options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        });
     builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSignalR();
 
     // DI Registrations - Phase 1
+    builder.Services.AddSingleton<ILocalUrlProvider, LocalUrlProvider>();
     builder.Services.AddScoped<IAuditLogService, AuditLogService>();
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IEmailService, EmailService>();
@@ -60,6 +68,8 @@ try
     builder.Services.AddScoped<IDigitalSignatureService, DigitalSignatureService>();
     builder.Services.AddScoped<IAppointmentService, AppointmentService>();
     builder.Services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
+    builder.Services.AddScoped<IHealthRecordService, HealthRecordService>();
+    builder.Services.AddScoped<ITemplateService, TemplateService>();
 
     // DI Registrations - Phase 4: QR Code System
     builder.Services.AddScoped<IQRTokenService, QRTokenService>();
@@ -195,7 +205,11 @@ try
         {
             OnMessageReceived = context =>
             {
-                context.Token = context.Request.Cookies["auth_token"];
+                var cookieToken = context.Request.Cookies["auth_token"];
+                if (!string.IsNullOrEmpty(cookieToken))
+                {
+                    context.Token = cookieToken;
+                }
                 return Task.CompletedTask;
             }
         };
@@ -210,20 +224,39 @@ try
         options.AddPolicy("PatientOrDoctorPolicy", policy => policy.RequireRole("Patient", "Doctor"));
     });
 
-    // CORS
-    var corsOrigins = builder.Configuration.GetSection("CorsSettings:AllowedOrigins").Get<string[]>() ?? Array.Empty<string>();
     builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowFrontend", policy =>
     {
-        options.AddPolicy("AllowFrontend", policy =>
+        policy.SetIsOriginAllowed(origin =>
         {
-            policy.WithOrigins(corsOrigins).AllowAnyMethod().AllowAnyHeader().AllowCredentials();
-        });
-    });
+            if (string.IsNullOrEmpty(origin)) return false;
 
+            var host = new Uri(origin).Host;
+
+            return host == "localhost" ||
+                   host.EndsWith(".local") ||   // allows DESKTOP-L89OLJD.local
+                   host.StartsWith("192.168.") ||
+                   host.StartsWith("172.");
+        })
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .AllowCredentials();
+    });
+});
     // AutoMapper
     builder.Services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
 
     var app = builder.Build();
+
+        // Forward headers from local reverse proxy if any (safe to keep even without one)
+        var forwardedOptions = new ForwardedHeadersOptions
+        {
+            ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+        };
+        forwardedOptions.KnownNetworks.Clear();
+        forwardedOptions.KnownProxies.Clear();
+        app.UseForwardedHeaders(forwardedOptions);
 
     // ==========================================
     // DATABASE INITIALIZATION
@@ -303,6 +336,11 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
     app.MapControllers();
+    
+    // Diagnostic Endpoint
+    app.MapGet("/api/ping", () => Results.Ok(new { message = "Backend is reachable!", time = DateTime.Now }));
+    
+    app.MapHub<SecureMedicalRecordSystem.API.Hubs.ScannerHub>("/hubs/scanner").RequireCors("AllowFrontend");
 
     // Ensure Storage directories exist
     Log.Information("Ensuring storage directories exist...");

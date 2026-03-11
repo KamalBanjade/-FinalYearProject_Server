@@ -21,6 +21,7 @@ public class AuthService : IAuthService
     private readonly RoleManager<IdentityRole<Guid>> _roleManager;
     private readonly ApplicationDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly ILocalUrlProvider _urlProvider;
     private readonly IAuditLogService _auditLogService;
     private readonly IEmailService _emailService;
     private readonly IKeyManagementService _keyManagementService;
@@ -34,6 +35,7 @@ public class AuthService : IAuthService
         RoleManager<IdentityRole<Guid>> roleManager,
         ApplicationDbContext context,
         IConfiguration configuration,
+        ILocalUrlProvider urlProvider,
         IAuditLogService auditLogService,
         IEmailService emailService,
         IKeyManagementService keyManagementService,
@@ -46,6 +48,7 @@ public class AuthService : IAuthService
         _roleManager = roleManager;
         _context = context;
         _configuration = configuration;
+        _urlProvider = urlProvider;
         _auditLogService = auditLogService;
         _emailService = emailService;
         _keyManagementService = keyManagementService;
@@ -128,7 +131,7 @@ public class AuthService : IAuthService
 
             // 7. Generate Medical Access Token
             var (accessToken, expiresAt) = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
-            var frontendUrl = _configuration["ApplicationUrls:FrontendUrl"] ?? "http://localhost:3000";
+            var frontendUrl = _urlProvider.FrontendBaseUrl;
             var accessUrl = $"{frontendUrl}/access/{accessToken}";
 
             // 8. Generate Confirmation Token
@@ -369,7 +372,7 @@ public class AuthService : IAuthService
                     var tokenResult = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
                     accessToken = tokenResult.Token;
                     expiresAt = tokenResult.ExpiresAt;
-                    var frontendUrl = _configuration["ApplicationUrls:FrontendUrl"] ?? "http://localhost:3000";
+                    var frontendUrl = _urlProvider.FrontendBaseUrl;
                     accessUrl = $"{frontendUrl}/access/{accessToken}";
                 }
 
@@ -527,7 +530,7 @@ public class AuthService : IAuthService
         }
 
         var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-        var template = _configuration["EmailTemplates:EmailConfirmationLinkTemplate"] ?? "";
+        var template = _urlProvider.EmailConfirmationLinkTemplate;
         
         var confirmationLink = template
             .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(token))
@@ -565,7 +568,7 @@ public class AuthService : IAuthService
 
         var token = await _userManager.GeneratePasswordResetTokenAsync(user);
         
-        var template = _configuration["EmailTemplates:PasswordResetLinkTemplate"] ?? "";
+        var template = _urlProvider.PasswordResetLinkTemplate;
         var resetLink = template
             .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(token))
             .Replace("[USERID]", user.Id.ToString());
@@ -673,7 +676,7 @@ public class AuthService : IAuthService
             var tokenResult = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
             accessToken = tokenResult.Token;
             expiresAt = tokenResult.ExpiresAt;
-            var frontendUrl = _configuration["ApplicationUrls:FrontendUrl"] ?? "http://localhost:3000";
+            var frontendUrl = _urlProvider.FrontendBaseUrl;
             accessUrl = $"{frontendUrl}/access/{accessToken}";
         }
 
@@ -860,6 +863,14 @@ public class AuthService : IAuthService
                 totalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
             }
         });
+    }
+
+    public async Task<Doctor?> GetDoctorEntityByIdAsync(Guid doctorId)
+    {
+        return await _context.Doctors
+            .Include(d => d.User)
+            .Include(d => d.Department)
+            .FirstOrDefaultAsync(d => d.Id == doctorId);
     }
 
     public async Task<(bool Success, string Message, object? Data)> GetDoctorDetailsAsync(Guid doctorId)

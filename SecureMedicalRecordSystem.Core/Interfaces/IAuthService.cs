@@ -34,6 +34,7 @@ public interface IAuthService
         bool? isActive = null);
     
     Task<(bool Success, string Message, object? Data)> GetDoctorDetailsAsync(Guid doctorId);
+    Task<Doctor?> GetDoctorEntityByIdAsync(Guid doctorId);
     Task<(bool Success, string Message)> UpdateDoctorAsync(Guid doctorUserId, UpdateDoctorRequestDTO request);
     Task<(bool Success, string Message)> DeleteDoctorAsync(Guid doctorUserId);
     Task<(bool Success, string Message, object? Data)> RotateDoctorKeysAsync(Guid doctorUserId);

@@ -13,11 +13,13 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly ITrustedDeviceService _trustedDeviceService;
+    private readonly IWebHostEnvironment _env;
 
-    public AuthController(IAuthService authService, ITrustedDeviceService trustedDeviceService)
+    public AuthController(IAuthService authService, ITrustedDeviceService trustedDeviceService, IWebHostEnvironment env)
     {
         _authService = authService;
         _trustedDeviceService = trustedDeviceService;
+        _env = env;
     }
 
     [HttpPost("register")]
@@ -45,8 +47,8 @@ public class AuthController : ControllerBase
         Response.Cookies.Delete("auth_token", new CookieOptions
         {
             HttpOnly = true,
-            Secure = Request.IsHttps,
-            SameSite = SameSiteMode.Strict
+            Secure = !_env.IsDevelopment(),
+            SameSite = _env.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None
         });
         return Ok(ApiResponse.SuccessResult((object?)null, "Logged out successfully."));
     }
@@ -80,8 +82,8 @@ public class AuthController : ControllerBase
             Response.Cookies.Append("device_token", deviceToken, new CookieOptions
             {
                 HttpOnly = true,
-                Secure = true, // Force secure for production setup
-                SameSite = SameSiteMode.Strict,
+                Secure = !_env.IsDevelopment(),
+                SameSite = _env.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None,
                 Expires = DateTime.UtcNow.AddDays(30),
                 Path = "/"
             });
@@ -92,12 +94,12 @@ public class AuthController : ControllerBase
             var cookieOptions = new CookieOptions
             {
                 HttpOnly = true,
-                Secure = Request.IsHttps, // Only secure if on HTTPS
-                SameSite = SameSiteMode.Strict,
+                Secure = !_env.IsDevelopment(),
+                SameSite = _env.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None,
                 Expires = result.Data.ExpiresAt
             };
             Response.Cookies.Append("auth_token", result.Data.Token, cookieOptions);
-            result.Data.Token = null; // Don't send token in body
+            // result.Data.Token = null; // We now send token in body for cross-domain tunnel support
         }
 
         return Ok(ApiResponse.SuccessResult(result.Data, result.Message));

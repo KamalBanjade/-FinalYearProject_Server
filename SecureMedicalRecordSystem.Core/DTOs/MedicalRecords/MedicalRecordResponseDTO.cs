@@ -35,4 +35,5 @@ public class MedicalRecordResponseDTO
     // Elderly-friendly timeline fields
     public string RelativeTimeString { get; set; } = string.Empty; // e.g., "2 days ago (March 3)"
     public string TimePeriod { get; set; } = string.Empty; // e.g., "THIS_WEEK"
+    public string? Tags { get; set; }
 }
