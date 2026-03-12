@@ -13,12 +13,14 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly ITrustedDeviceService _trustedDeviceService;
+    private readonly IGoogleAuthService _googleAuthService;
     private readonly IWebHostEnvironment _env;
 
-    public AuthController(IAuthService authService, ITrustedDeviceService trustedDeviceService, IWebHostEnvironment env)
+    public AuthController(IAuthService authService, ITrustedDeviceService trustedDeviceService, IGoogleAuthService googleAuthService, IWebHostEnvironment env)
     {
         _authService = authService;
         _trustedDeviceService = trustedDeviceService;
+        _googleAuthService = googleAuthService;
         _env = env;
     }
 
@@ -100,6 +102,64 @@ public class AuthController : ControllerBase
             };
             Response.Cookies.Append("auth_token", result.Data.Token, cookieOptions);
             // result.Data.Token = null; // We now send token in body for cross-domain tunnel support
+        }
+
+        return Ok(ApiResponse.SuccessResult(result.Data, result.Message));
+    }
+
+    [HttpGet("google/url")]
+    [AllowAnonymous]
+    public IActionResult GetGoogleLoginUrl()
+    {
+        var url = _googleAuthService.GetGoogleLoginUrl(out var state);
+        
+        // Store state in HTTP-only cookie to prevent CSRF
+        Response.Cookies.Append("oauth_state", state, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !_env.IsDevelopment(),
+            SameSite = _env.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None,
+            Expires = DateTime.UtcNow.AddMinutes(15)
+        });
+
+        return Ok(ApiResponse.SuccessResult(new { url }, "Google login URL generated successfully."));
+    }
+
+    [HttpGet("google/callback")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GoogleCallback([FromQuery] string code, [FromQuery] string state)
+    {
+        var expectedState = Request.Cookies["oauth_state"];
+        if (string.IsNullOrEmpty(expectedState) || state != expectedState)
+        {
+            return BadRequest(ApiResponse.FailureResult("Invalid state parameter. CSRF validation failed."));
+        }
+
+        // Clear the state cookie
+        Response.Cookies.Delete("oauth_state", new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !_env.IsDevelopment(),
+            SameSite = _env.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None
+        });
+
+        var result = await _googleAuthService.HandleGoogleCallbackAsync(code, state);
+
+        if (!result.Success)
+        {
+            return BadRequest(ApiResponse.FailureResult(result.Message));
+        }
+
+        if (result.Data?.Token != null)
+        {
+            var cookieOptions = new CookieOptions
+            {
+                HttpOnly = true,
+                Secure = !_env.IsDevelopment(),
+                SameSite = _env.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None,
+                Expires = result.Data.ExpiresAt
+            };
+            Response.Cookies.Append("auth_token", result.Data.Token, cookieOptions);
         }
 
         return Ok(ApiResponse.SuccessResult(result.Data, result.Message));
@@ -204,7 +264,8 @@ public class AuthController : ControllerBase
             user.TwoFactorEnabled,
             user.TOTPSetupCompleted,
             DateOfBirth = user.PatientProfile?.DateOfBirth,
-            BloodType = user.PatientProfile?.BloodType
+            BloodType = user.PatientProfile?.BloodType,
+            user.ProfilePictureUrl
         };
 
         return Ok(ApiResponse.SuccessResult(userData, "User profile retrieved successfully."));

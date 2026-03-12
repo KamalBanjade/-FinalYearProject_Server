@@ -18,6 +18,7 @@ public class DoctorExtendedProfileDTO
     public string Specialization { get; set; } = string.Empty;
     public string? HospitalAffiliation { get; set; }
     public string? ContactNumber { get; set; }
+    public string? ProfilePictureUrl { get; set; }
 
     // Extended identity
     public string? Biography { get; set; }

@@ -13,4 +13,8 @@ public interface IAuditLogService
         SecureMedicalRecordSystem.Core.Enums.AuditSeverity? severity = null, 
         DateTime? fromDate = null, 
         DateTime? toDate = null);
+
+    Task<SecureMedicalRecordSystem.Core.DTOs.Admin.SystemStatisticsDTO> GetSystemStatisticsAsync();
+    Task<List<SecureMedicalRecordSystem.Core.DTOs.Admin.SecurityAlertDTO>> GetSecurityAlertsAsync();
+    Task<int> ApplyRetentionPolicyAsync(int retentionDays);
 }

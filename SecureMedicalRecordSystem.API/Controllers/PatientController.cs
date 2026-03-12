@@ -23,17 +23,20 @@ public class PatientController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IMedicalRecordsService _medicalRecordsService;
     private readonly IAuditLogService _auditLogService;
+    private readonly IImageStorageService _imageStorageService;
 
     public PatientController(
         ApplicationDbContext context, 
         UserManager<ApplicationUser> userManager,
         IMedicalRecordsService medicalRecordsService,
-        IAuditLogService auditLogService)
+        IAuditLogService auditLogService,
+        IImageStorageService imageStorageService)
     {
         _context = context;
         _userManager = userManager;
         _medicalRecordsService = medicalRecordsService;
         _auditLogService = auditLogService;
+        _imageStorageService = imageStorageService;
     }
 
     [HttpGet("profile")]
@@ -61,6 +64,7 @@ public class PatientController : ControllerBase
             patient.User?.LastName,
             patient.User?.Email,
             patient.User?.PhoneNumber,
+            ProfilePictureUrl = patient.User?.ProfilePictureUrl,
             patient.DateOfBirth,
             patient.Gender,
             patient.BloodType,
@@ -98,6 +102,60 @@ public class PatientController : ControllerBase
             return Ok(ApiResponse.SuccessResult((object?)null, "Profile updated successfully."));
         } catch (Exception ex) {
             return BadRequest(ApiResponse.FailureResult("Failed to update profile: " + ex.Message));
+        }
+    }
+
+    [HttpPost("profile/picture")]
+    public async Task<IActionResult> UploadProfilePicture(IFormFile file)
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized(ApiResponse.FailureResult("User not found."));
+
+        if (file == null || file.Length == 0)
+            return BadRequest(ApiResponse.FailureResult("No file uploaded."));
+
+        try
+        {
+            // Optional: Delete old picture if exists
+            if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+            {
+                await _imageStorageService.DeleteImageAsync(user.ProfilePictureUrl);
+            }
+
+            using var stream = file.OpenReadStream();
+            var uploadResult = await _imageStorageService.UploadImageAsync(stream, file.FileName, "profile-pictures");
+            user.ProfilePictureUrl = uploadResult;
+            
+            await _userManager.UpdateAsync(user);
+
+            return Ok(ApiResponse.SuccessResult(new { url = uploadResult }, "Profile picture updated successfully."));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.FailureResult("Failed to upload image: " + ex.Message));
+        }
+    }
+
+    [HttpDelete("profile/picture")]
+    public async Task<IActionResult> DeleteProfilePicture()
+    {
+        var user = await _userManager.GetUserAsync(User);
+        if (user == null) return Unauthorized(ApiResponse.FailureResult("User not found."));
+
+        if (string.IsNullOrEmpty(user.ProfilePictureUrl))
+            return BadRequest(ApiResponse.FailureResult("No profile picture to delete."));
+
+        try
+        {
+            await _imageStorageService.DeleteImageAsync(user.ProfilePictureUrl);
+            user.ProfilePictureUrl = null;
+            await _userManager.UpdateAsync(user);
+
+            return Ok(ApiResponse.SuccessResult((object?)null, "Profile picture deleted successfully."));
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(ApiResponse.FailureResult("Failed to delete image: " + ex.Message));
         }
     }
 

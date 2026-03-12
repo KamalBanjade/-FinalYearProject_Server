@@ -3,6 +3,8 @@ using Microsoft.AspNetCore.Mvc;
 using SecureMedicalRecordSystem.Core.DTOs;
 using SecureMedicalRecordSystem.Core.DTOs.Admin;
 using SecureMedicalRecordSystem.Core.Interfaces;
+using SecureMedicalRecordSystem.Core.Entities;
+using Microsoft.AspNetCore.Identity;
 using System.Security.Claims;
 
 namespace SecureMedicalRecordSystem.API.Controllers;
@@ -14,11 +16,19 @@ public class AdminController : ControllerBase
 {
     private readonly IAuthService _authService;
     private readonly IAuditLogService _auditLogService;
+    private readonly IImageStorageService _imageStorageService;
+    private readonly UserManager<ApplicationUser> _userManager;
 
-    public AdminController(IAuthService authService, IAuditLogService auditLogService)
+    public AdminController(
+        IAuthService authService, 
+        IAuditLogService auditLogService,
+        IImageStorageService imageStorageService,
+        UserManager<ApplicationUser> userManager)
     {
         _authService = authService;
         _auditLogService = auditLogService;
+        _imageStorageService = imageStorageService;
+        _userManager = userManager;
     }
 
     [HttpPost("doctors/invite")]
@@ -154,5 +164,116 @@ public class AdminController : ControllerBase
         };
 
         return Ok(ApiResponse.SuccessResult(response, "Audit logs retrieved successfully."));
+    }
+
+    [HttpGet("statistics")]
+    public async Task<IActionResult> GetSystemStatistics()
+    {
+        var stats = await _auditLogService.GetSystemStatisticsAsync();
+        return Ok(ApiResponse.SuccessResult(stats, "System statistics retrieved successfully."));
+    }
+
+    [HttpGet("security-alerts")]
+    public async Task<IActionResult> GetSecurityAlerts()
+    {
+        var alerts = await _auditLogService.GetSecurityAlertsAsync();
+        return Ok(ApiResponse.SuccessResult(alerts, $"{alerts.Count} security alert(s) retrieved."));
+    }
+
+    [HttpPost("apply-retention")]
+    public async Task<IActionResult> ApplyRetentionPolicy([FromQuery] int retentionDays = 90)
+    {
+        if (retentionDays < 30)
+            return BadRequest(ApiResponse.FailureResult("Minimum retention period is 30 days."));
+
+        var deletedCount = await _auditLogService.ApplyRetentionPolicyAsync(retentionDays);
+        return Ok(ApiResponse.SuccessResult(new { deletedCount, retentionDays },
+            $"Retention policy applied. {deletedCount} old log entries removed."));
+    }
+
+    [HttpGet("export-logs")]
+    public async Task<IActionResult> ExportAuditLogs(
+        [FromQuery] string? searchTerm = null,
+        [FromQuery] string? action = null,
+        [FromQuery] DateTime? fromDate = null,
+        [FromQuery] DateTime? toDate = null)
+    {
+        var (logs, _) = await _auditLogService.GetLogsAsync(1, int.MaxValue, searchTerm, action, null, fromDate, toDate);
+
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Id,Timestamp,User,Email,Action,Details,Severity,IPAddress,EntityType,EntityId");
+
+        foreach (var log in logs)
+        {
+            csv.AppendLine(string.Join(",",
+                EscapeCsv(log.Id.ToString()),
+                EscapeCsv(log.Timestamp.ToString("yyyy-MM-dd HH:mm:ss")),
+                EscapeCsv(log.UserName ?? "System"),
+                EscapeCsv(log.UserEmail ?? ""),
+                EscapeCsv(log.Action),
+                EscapeCsv(log.Details),
+                EscapeCsv(log.SeverityLabel),
+                EscapeCsv(log.IPAddress),
+                EscapeCsv(log.EntityType ?? ""),
+                EscapeCsv(log.EntityId ?? "")
+            ));
+        }
+
+        var fileName = $"audit_logs_{DateTime.UtcNow:yyyyMMdd_HHmmss}.csv";
+        var bytes = System.Text.Encoding.UTF8.GetBytes(csv.ToString());
+        return File(bytes, "text/csv", fileName);
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (value.Contains(',') || value.Contains('"') || value.Contains('\n'))
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        return value;
+    }
+
+    [HttpPost("profile/picture")]
+    public async Task<IActionResult> UploadProfilePicture(IFormFile file)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized(ApiResponse.FailureResult("User not found"));
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null) return NotFound(ApiResponse.FailureResult("User not found"));
+
+        if (file == null || file.Length == 0)
+            return BadRequest(ApiResponse.FailureResult("No file uploaded"));
+
+        // Delete old picture if exists
+        if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+        {
+            await _imageStorageService.DeleteImageAsync(user.ProfilePictureUrl);
+        }
+
+        using var stream = file.OpenReadStream();
+        var imageUrl = await _imageStorageService.UploadImageAsync(stream, file.FileName, "profile-pictures");
+
+        user.ProfilePictureUrl = imageUrl;
+        await _userManager.UpdateAsync(user);
+
+        return Ok(ApiResponse.SuccessResult(new { url = user.ProfilePictureUrl }, "Profile picture updated"));
+    }
+
+    [HttpDelete("profile/picture")]
+    public async Task<IActionResult> DeleteProfilePicture()
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (userId == null) return Unauthorized(ApiResponse.FailureResult("User not found"));
+
+        var user = await _userManager.FindByIdAsync(userId);
+        if (user == null) return NotFound(ApiResponse.FailureResult("User not found"));
+
+        if (!string.IsNullOrEmpty(user.ProfilePictureUrl))
+        {
+            await _imageStorageService.DeleteImageAsync(user.ProfilePictureUrl);
+            user.ProfilePictureUrl = null;
+            await _userManager.UpdateAsync(user);
+        }
+
+        return Ok(ApiResponse.SuccessResult((object?)null, "Profile picture deleted"));
     }
 }

@@ -28,6 +28,11 @@ public class ApplicationUser : IdentityUser<Guid>
     public DateTime? MedicalQRGeneratedAt { get; set; }
     public bool TOTPReminderSent { get; set; } = false;
 
+    // OAuth & Profile Extensions
+    public string? ProfilePictureUrl { get; set; }
+    public string? GoogleId { get; set; }
+    public string? Provider { get; set; }
+
     // Navigation Properties
     // These link to role-specific profiles. They will be null for Admins or non-applicable roles.
     public Patient? PatientProfile { get; set; }

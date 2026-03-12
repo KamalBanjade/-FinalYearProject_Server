@@ -51,6 +51,7 @@ try
         });
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSignalR();
+    builder.Services.AddMemoryCache();
 
     // DI Registrations - Phase 1
     builder.Services.AddSingleton<ILocalUrlProvider, LocalUrlProvider>();
@@ -59,10 +60,13 @@ try
     builder.Services.AddScoped<IEmailService, EmailService>();
     builder.Services.AddScoped<ITotpService, TotpService>();
     builder.Services.AddScoped<ITrustedDeviceService, TrustedDeviceService>();
+    builder.Services.AddHttpClient(); // Required for GoogleAuthService
+    builder.Services.AddScoped<IGoogleAuthService, GoogleAuthService>();
 
     // DI Registrations - Phase 2: Encryption & File Storage
     builder.Services.AddScoped<IEncryptionService, EncryptionService>();
     builder.Services.AddScoped<ITigrisStorageService, TigrisStorageService>();
+    builder.Services.AddScoped<IImageStorageService, CloudinaryImageStorageService>();
     builder.Services.AddScoped<IMedicalRecordsService, MedicalRecordsService>();
     builder.Services.AddScoped<IKeyManagementService, KeyManagementService>();
     builder.Services.AddScoped<IDigitalSignatureService, DigitalSignatureService>();
@@ -88,6 +92,7 @@ try
     builder.Services.Configure<TigrisSettings>(builder.Configuration.GetSection("TigrisSettings"));
     builder.Services.Configure<FileUploadSettings>(builder.Configuration.GetSection("FileUploadSettings"));
     builder.Services.Configure<MasterKeySettings>(builder.Configuration.GetSection("MasterKeySettings"));
+    builder.Services.Configure<SecureMedicalRecordSystem.Core.Settings.CloudinarySettings>(builder.Configuration.GetSection("Cloudinary"));
 
     // AWS/Tigris S3 Client Registration
     var tigrisSettings = builder.Configuration.GetSection("TigrisSettings").Get<TigrisSettings>();

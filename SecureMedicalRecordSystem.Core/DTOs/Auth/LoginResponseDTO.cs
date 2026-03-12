@@ -16,6 +16,7 @@ public class LoginResponseDTO
     public string? DeviceToken { get; set; }
     public DateTime? DateOfBirth { get; set; }
     public string? BloodType { get; set; }
+    public string? ProfilePictureUrl { get; set; }
 
     // NEW: Device trust information
     public bool TrustedDevice { get; set; } = false; // Login via trusted device

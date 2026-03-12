@@ -396,6 +396,7 @@ public class AuthService : IAuthService
                     MedicalAccessToken = accessToken,
                     MedicalAccessURL = accessUrl,
                     MedicalAccessExpiresAt = expiresAt,
+                    ProfilePictureUrl = user.ProfilePictureUrl,
                     ExpiresAt = DateTime.UtcNow.AddDays(1)
                 });
             }
@@ -433,6 +434,7 @@ public class AuthService : IAuthService
                     TOTPSetupCompleted = user.TOTPSetupCompleted,
                     DateOfBirth = user.PatientProfile?.DateOfBirth,
                     BloodType = user.PatientProfile?.BloodType,
+                    ProfilePictureUrl = user.ProfilePictureUrl,
                     ExpiresAt = DateTime.UtcNow.AddDays(expirationDaysTrusted)
                 });
             }
@@ -510,6 +512,7 @@ public class AuthService : IAuthService
             RequiresPasswordChange = user.RequiresPasswordChange,
             DateOfBirth = user.PatientProfile?.DateOfBirth,
             BloodType = user.PatientProfile?.BloodType,
+            ProfilePictureUrl = user.ProfilePictureUrl,
             ExpiresAt = DateTime.UtcNow.AddDays(expirationDays)
         });
     }
@@ -696,6 +699,7 @@ public class AuthService : IAuthService
             MedicalAccessToken = accessToken,
             MedicalAccessURL = accessUrl,
             MedicalAccessExpiresAt = expiresAt,
+            ProfilePictureUrl = user.ProfilePictureUrl,
             ExpiresAt = DateTime.UtcNow
         });
     }
