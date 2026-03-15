@@ -40,7 +40,7 @@ public class Template : BaseEntity
     // Navigation Properties
     public ApplicationUser Creator { get; set; } = null!;
     public Department? Department { get; set; }
-    public PatientHealthRecord? SourceRecord { get; set; }
+    public virtual PatientHealthRecord? SourceRecord { get; set; }
     public Template? ParentTemplate { get; set; }
     public ICollection<TemplateUsageHistory> UsageHistory { get; set; } = new List<TemplateUsageHistory>();
 }

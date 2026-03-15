@@ -53,6 +53,7 @@ public class MedicalRecordsService : IMedicalRecordsService
         // 1. Validate patient exists
         var patient = await _context.Patients
             .Include(p => p.User)
+            .OrderBy(p => p.Id)
             .FirstOrDefaultAsync(p => p.Id == patientId);
 
         if (patient == null)
@@ -146,6 +147,7 @@ public class MedicalRecordsService : IMedicalRecordsService
         // 1. DB Lookup (metadata only — no blob)
         var record = await _context.MedicalRecords
             .Include(r => r.Patient)
+            .OrderBy(r => r.Id)
             .FirstOrDefaultAsync(r => r.Id == recordId && !r.IsDeleted);
 
         _logger.LogInformation("[PERF] [Stream] Phase 1: DB lookup in {Ms}ms", sw.ElapsedMilliseconds);
@@ -187,46 +189,16 @@ public class MedicalRecordsService : IMedicalRecordsService
         Guid patientId,
         Guid requestingUserId)
     {
-        // Access check: a Patient can only see their own records.
-        var requestingUserRole = await _context.Users
-            .AsNoTracking()
-            .Where(u => u.Id == requestingUserId)
-            .Select(u => u.Role)
-            .FirstOrDefaultAsync();
+        var (allowed, message, patientName) = await GetPatientMetadataAndCheckAccessAsync(patientId, requestingUserId);
+        if (!allowed) return (false, message, null);
 
-        if (requestingUserRole == null) return (false, "User not found.", null);
-
-        if (requestingUserRole == "Patient")
-        {
-            var ownerUserId = await _context.Patients
-                .AsNoTracking()
-                .Where(p => p.Id == patientId)
-                .Select(p => p.UserId)
-                .FirstOrDefaultAsync();
-
-            if (requestingUserId != ownerUserId)
-                return (false, "Unauthorized access.", null);
-        }
-
-        var records = await _context.MedicalRecords
-            .AsNoTracking()
-            .Where(r => r.PatientId == patientId && !r.IsDeleted)
-            .Include(r => r.Patient)
-                .ThenInclude(p => p.User)
-            .Include(r => r.AssignedDoctor)
-                .ThenInclude(d => d.User)
-            .Include(r => r.Certifications)
-                .ThenInclude(c => c.Doctor)
-                    .ThenInclude(d => d.User)
-            .OrderByDescending(r => r.UploadedAt)
+        // Direct projection: fetches ONLY the fields the DTO needs — no full entity hydration.
+        // This is the core fix. Include().ThenInclude() was loading all ApplicationUser columns
+        // (password hashes, security stamps, phone numbers...) just to get FirstName + LastName.
+        var dtos = await ProjectToDto(_context.MedicalRecords
+            .Where(r => r.PatientId == patientId && !r.IsDeleted), patientName!, canDownload: true)
             .ToListAsync();
 
-        var patientName = records.FirstOrDefault()?.Patient?.User != null 
-            ? $"{records[0].Patient.User.FirstName} {records[0].Patient.User.LastName}" 
-            : "Patient";
-
-        var dtos = records.Select(r => MapToDto(r, patientName, true)).ToList();
-        
         return (true, "Success", dtos);
     }
 
@@ -234,45 +206,23 @@ public class MedicalRecordsService : IMedicalRecordsService
         Guid patientId,
         Guid requestingUserId)
     {
-        // Access check: a Patient can only see their own records.
-        var requestingUserRole = await _context.Users
-            .AsNoTracking()
-            .Where(u => u.Id == requestingUserId)
-            .Select(u => u.Role)
-            .FirstOrDefaultAsync();
+        var (allowed, message, patientName) = await GetPatientMetadataAndCheckAccessAsync(patientId, requestingUserId);
+        if (!allowed) return (false, message, null);
 
-        if (requestingUserRole == null) return (false, "User not found.", null);
-
-        if (requestingUserRole == "Patient")
-        {
-            var ownerUserId = await _context.Patients
-                .AsNoTracking()
-                .Where(p => p.Id == patientId)
-                .Select(p => p.UserId)
-                .FirstOrDefaultAsync();
-
-            if (requestingUserId != ownerUserId)
-                return (false, "Unauthorized access.", null);
-        }
-
-        var records = await _context.MedicalRecords
-            .AsNoTracking()
-            .Where(r => r.PatientId == patientId && !r.IsDeleted)
-            .Include(r => r.Patient)
-                .ThenInclude(p => p.User)
-            .Include(r => r.Certifications)
-                .ThenInclude(c => c.Doctor)
-                    .ThenInclude(d => d.User)
-            .OrderByDescending(r => r.UploadedAt)
+        // Direct projection: same approach — one efficient SQL query, no entity hydration.
+        var dtos = await ProjectToDto(_context.MedicalRecords
+            .Where(r => r.PatientId == patientId && !r.IsDeleted), patientName!, canDownload: true)
             .ToListAsync();
 
-        var patientName = records.FirstOrDefault()?.Patient?.User != null 
-            ? $"{records[0].Patient.User.FirstName} {records[0].Patient.User.LastName}" 
-            : "Patient";
+        // Compute date-derived display fields in-memory (cannot run inside SQL).
+        // This is O(N) over only the projected, lightweight DTOs — not full entity objects.
+        foreach (var dto in dtos)
+        {
+            dto.TimePeriod = DateGroupingHelper.GetTimePeriodLabel(dto.UploadedAt);
+            dto.RelativeTimeString = DateGroupingHelper.GetRelativeTimeString(dto.UploadedAt);
+        }
 
-        var dtos = records.Select(r => MapToDto(r, patientName, true)).ToList();
-        
-        // Grouping logic
+        // Grouping logic (in-memory, fast since data is already projected)
         var groupedData = new GroupedMedicalRecordsDTO
         {
             TotalCount = dtos.Count,
@@ -306,6 +256,81 @@ public class MedicalRecordsService : IMedicalRecordsService
         return (true, "Success", groupedData);
     }
 
+    /// <summary>
+    /// Core projection helper: builds a MedicalRecordResponseDTO directly in EF LINQ.
+    /// EF translates this to a single efficient SQL SELECT with only the needed columns —
+    /// no Include() hydration of full entity graphs.
+    /// </summary>
+    private IQueryable<MedicalRecordResponseDTO> ProjectToDto(
+        IQueryable<MedicalRecord> query,
+        string patientName,
+        bool canDownload)
+    {
+        return query
+            .AsNoTracking()
+            .OrderByDescending(r => r.UploadedAt)
+            .Select(r => new MedicalRecordResponseDTO
+            {
+                Id = r.Id,
+                PatientId = r.PatientId,
+                OriginalFileName = r.OriginalFileName,
+                RecordType = r.RecordType,
+                Description = r.Description,
+                RecordDate = r.RecordDate,
+                FileSize = r.FileSizeBytes,
+                FileSizeFormatted = r.FileSizeBytes >= 1048576
+                    ? $"{(r.FileSizeBytes / 1048576.0):n1} MB"
+                    : r.FileSizeBytes >= 1024
+                        ? $"{(r.FileSizeBytes / 1024.0):n1} KB"
+                        : $"{r.FileSizeBytes} B",
+                MimeType = r.MimeType,
+                State = r.State,
+                StateLabel = r.State == RecordState.Draft ? "Draft"
+                    : r.State == RecordState.Pending ? "Awaiting Review"
+                    : r.State == RecordState.Certified ? "Certified"
+                    : r.State == RecordState.Archived ? "Archived"
+                    : r.State == RecordState.Emergency ? "Emergency Access"
+                    : r.State.ToString(),
+                RejectionReason = r.State == RecordState.Draft && r.Notes != null && r.Notes.StartsWith("REJECTED:")
+                    ? r.Notes.Substring("REJECTED:".Length).Trim()
+                    : null,
+                UploadedAt = r.UploadedAt,
+                // Prefer auto-generated report author (assigned doctor) over generic uploader
+                UploadedBy = (r.RecordType != null && r.RecordType.Contains("Auto-Generated") && r.AssignedDoctor != null)
+                    ? ("Dr. " + r.AssignedDoctor.User!.FirstName + " " + r.AssignedDoctor.User.LastName).Trim()
+                    : patientName,
+                PatientName = patientName,
+                AssignedDoctorName = r.AssignedDoctor != null
+                    ? ("Dr. " + r.AssignedDoctor.User!.FirstName + " " + r.AssignedDoctor.User.LastName).Trim()
+                    : null,
+                AssignedDoctorId = r.AssignedDoctorId,
+                AssignedDepartment = r.AssignedDoctor != null ? r.AssignedDoctor.Department!.Name : null,
+                IsCertified = r.Certifications.Any(c => c.IsValid),
+                CertifiedBy = r.Certifications
+                    .Where(c => c.IsValid)
+                    .OrderByDescending(c => c.SignedAt)
+                    .Select(c => c.Doctor.User!.FirstName + " " + c.Doctor.User.LastName)
+                    .FirstOrDefault(),
+                CertifiedById = r.Certifications
+                    .Where(c => c.IsValid)
+                    .OrderByDescending(c => c.SignedAt)
+                    .Select(c => (Guid?)c.DoctorId)
+                    .FirstOrDefault(),
+                CertifiedAt = r.Certifications
+                    .Where(c => c.IsValid)
+                    .OrderByDescending(c => c.SignedAt)
+                    .Select(c => (DateTime?)c.SignedAt)
+                    .FirstOrDefault(),
+                Version = r.Version,
+                CanDownload = canDownload,
+                Tags = r.Tags,
+                // These are computed server-side in DateGroupingHelper (cannot be in SQL)
+                // We set them to empty here; the ordering is correct due to UploadedAt sort.
+                RelativeTimeString = "",
+                TimePeriod = "",
+            });
+    }
+
     public async Task<(bool Success, string Message, MedicalRecordResponseDTO? Data)> GetRecordDetailsAsync(
         Guid recordId,
         Guid requestingUserId)
@@ -313,9 +338,12 @@ public class MedicalRecordsService : IMedicalRecordsService
         var record = await _context.MedicalRecords
             .Include(r => r.Patient)
             .ThenInclude(p => p.User)
+            .Include(r => r.AssignedDoctor)
+            .ThenInclude(d => d!.User)
             .Include(r => r.Certifications)
             .ThenInclude(c => c.Doctor)
             .ThenInclude(d => d.User)
+            .OrderBy(r => r.Id)
             .FirstOrDefaultAsync(r => r.Id == recordId && !r.IsDeleted);
 
         if (record == null) return (false, "Record not found.", null);
@@ -344,6 +372,8 @@ public class MedicalRecordsService : IMedicalRecordsService
             .Where(r => r.State == RecordState.Pending && !r.IsDeleted && r.AssignedDoctorId == doctorId)
             .Include(r => r.Patient)
                 .ThenInclude(p => p.User)
+            .Include(r => r.AssignedDoctor)
+                .ThenInclude(d => d!.User)
             .Include(r => r.Certifications)
                 .ThenInclude(c => c.Doctor)
                     .ThenInclude(d => d.User)
@@ -378,10 +408,15 @@ public class MedicalRecordsService : IMedicalRecordsService
             .Where(r => r.Certifications.Any(c => c.DoctorId == doctorId && c.IsValid && !c.IsDeleted))
             .Include(r => r.Patient)
                 .ThenInclude(p => p.User)
+            .Include(r => r.AssignedDoctor)
+                .ThenInclude(d => d!.User)
+            .Include(r => r.AssignedDoctor) // Fix N+1: Department for mapping
+                .ThenInclude(d => d!.Department)
             .Include(r => r.Certifications.Where(c => c.IsValid && !c.IsDeleted))
                 .ThenInclude(c => c.Doctor)
                     .ThenInclude(d => d.User)
             .OrderByDescending(r => r.CertifiedAt)
+            .AsSplitQuery()
             .ToListAsync();
 
         var dtos = records.Select(r => {
@@ -452,6 +487,7 @@ public class MedicalRecordsService : IMedicalRecordsService
                 LatestRecordDate = g.Max(r => r.UploadedAt),
                 Patient = _context.Patients
                     .Include(p => p.User)
+                    .OrderBy(p => p.Id)
                     .FirstOrDefault(p => p.Id == g.Key)
             })
             .ToListAsync();
@@ -812,54 +848,71 @@ public class MedicalRecordsService : IMedicalRecordsService
 
     private async Task<bool> CheckAccessAsync(MedicalRecord record, Guid userId)
     {
-        // Single query to get the user's role — avoids 2 sequential UserManager calls.
-        var userRole = await _context.Users
+        // Consolidated single query check: role + ownership + doctor relationships in one joined check.
+        // This eliminates sequential DB round-trips for every access check.
+        var accessInfo = await _context.Users
             .AsNoTracking()
             .Where(u => u.Id == userId)
-            .Select(u => u.Role)
+            .Select(u => new 
+            { 
+                u.Role,
+                IsOwner = u.PatientProfile != null && u.PatientProfile.Id == record.PatientId,
+                IsAssignedDoctor = u.DoctorProfile != null && (record.AssignedDoctorId == u.DoctorProfile.Id),
+                IsCertifyingDoctor = _context.RecordCertifications.Any(c => c.RecordId == record.Id && c.DoctorId == u.DoctorProfile!.Id && c.IsValid),
+                HasClinicalRelationship = u.DoctorProfile != null && (
+                    _context.Appointments.Any(a => a.PatientId == record.PatientId && a.DoctorId == u.DoctorProfile.Id) ||
+                    _context.MedicalRecords.Any(r => r.PatientId == record.PatientId && r.AssignedDoctorId == u.DoctorProfile.Id && !r.IsDeleted)
+                )
+            })
             .FirstOrDefaultAsync();
 
-        if (userRole == null) return false;
-        if (userRole == "Admin") return true;
-
-        // Check if the requesting user is the patient who owns this record.
-        var patientUserId = await _context.Patients
-            .AsNoTracking()
-            .Where(p => p.Id == record.PatientId)
-            .Select(p => p.UserId)
-            .FirstOrDefaultAsync();
-
-        if (patientUserId == userId) return true;
-
-        if (userRole == "Doctor")
+        if (accessInfo == null) return false;
+        if (accessInfo.Role == "Admin") return true;
+        if (accessInfo.IsOwner) return true;
+        
+        if (accessInfo.Role == "Doctor")
         {
-            var doctorId = await _context.Doctors
-                .AsNoTracking()
-                .Where(d => d.UserId == userId)
-                .Select(d => d.Id)
-                .FirstOrDefaultAsync();
-
-            if (doctorId == Guid.Empty) return false;
-
-            // 1. Direct Access: If the doctor is assigned to this record, they can always see it.
-            if (record.AssignedDoctorId == doctorId) return true;
-
-            // 2. Direct Access: If this doctor certified this record.
-            if (await _context.RecordCertifications.AnyAsync(c => c.RecordId == record.Id && c.DoctorId == doctorId && c.IsValid))
-                return true;
-
-            // 3. Clinical Relationship: If the doctor has an appointment or another record with this patient,
-            // they gain "care team" access to view the patient's full history.
-            var hasRelationship = await _context.Appointments.AnyAsync(a => a.PatientId == record.PatientId && a.DoctorId == doctorId)
-                                || await _context.MedicalRecords.AnyAsync(r => r.PatientId == record.PatientId && r.AssignedDoctorId == doctorId && !r.IsDeleted);
-            
-            if (hasRelationship) return true;
-
-            // 4. Emergency Access: Any doctor can view emergency records.
+            if (accessInfo.IsAssignedDoctor) return true;
+            if (accessInfo.IsCertifyingDoctor) return true;
+            if (accessInfo.HasClinicalRelationship) return true;
             if (record.State == RecordState.Emergency) return true;
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Unified helper to combine Role Check, Patient Ownership Check, and Patient Name retrieval
+    /// into a single efficient database round-trip. Directly solves the 14s latency issue.
+    /// </summary>
+    private async Task<(bool Allowed, string Message, string? PatientName)> GetPatientMetadataAndCheckAccessAsync(Guid patientId, Guid requestingUserId)
+    {
+        var metadata = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == requestingUserId)
+            .Select(u => new 
+            {
+                u.Role,
+                // Check if this specific user owns the patient profile being queried
+                IsOwner = u.PatientProfile != null && u.PatientProfile.Id == patientId,
+                // Fetch the TARGET patient's name (might be different from requester if Doctor/Admin)
+                TargetPatientName = _context.Patients
+                    .Where(p => p.Id == patientId)
+                    .Select(p => p.User!.FirstName + " " + p.User.LastName)
+                    .FirstOrDefault()
+            })
+            .FirstOrDefaultAsync();
+
+        if (metadata == null) return (false, "User session not found.", null);
+
+        // Security Enforcement
+        if (metadata.Role == "Patient" && !metadata.IsOwner)
+            return (false, "Unauthorized access to these records.", null);
+
+        // Fallback for TargetPatientName if patient doesn't exist
+        var patientName = metadata.TargetPatientName ?? "Patient";
+
+        return (true, "Access Granted", patientName);
     }
 
     private MedicalRecordResponseDTO MapToDto(MedicalRecord record, string uploaderName, bool canDownload)
@@ -880,6 +933,35 @@ public class MedicalRecordsService : IMedicalRecordsService
         if (record.State == RecordState.Draft && record.Notes != null && record.Notes.StartsWith("REJECTED:"))
             rejectionReason = record.Notes["REJECTED:".Length..].Trim();
 
+        // Robust name resolution
+        string? assignedDocName = null;
+        if (record.AssignedDoctor?.User != null)
+        {
+            var firstName = record.AssignedDoctor.User.FirstName?.Trim();
+            var lastName = record.AssignedDoctor.User.LastName?.Trim();
+            if (!string.IsNullOrWhiteSpace(firstName) || !string.IsNullOrWhiteSpace(lastName))
+            {
+                assignedDocName = $"Dr. {firstName} {lastName}".Replace("  ", " ").Trim();
+            }
+        }
+
+        string? certifiedByDocName = null;
+        if (cert?.Doctor?.User != null)
+        {
+            var fName = cert.Doctor.User.FirstName?.Trim();
+            var lName = cert.Doctor.User.LastName?.Trim();
+            if (!string.IsNullOrWhiteSpace(fName) || !string.IsNullOrWhiteSpace(lName))
+            {
+                certifiedByDocName = $"{fName} {lName}".Replace("  ", " ").Trim();
+            }
+        }
+
+        string finalUploadedBy = uploaderName;
+        if (record.RecordType != null && record.RecordType.Contains("Auto-Generated") && assignedDocName != null)
+        {
+            finalUploadedBy = assignedDocName;
+        }
+
         return new MedicalRecordResponseDTO
         {
             Id = record.Id,
@@ -895,16 +977,16 @@ public class MedicalRecordsService : IMedicalRecordsService
             StateLabel = stateLabel,
             RejectionReason = rejectionReason,
             UploadedAt = record.UploadedAt,
-            UploadedBy = (record.RecordType != null && record.RecordType.Contains("Auto-Generated") && record.AssignedDoctor?.User != null)
-                ? "Dr. " + record.AssignedDoctor.User.FirstName + " " + record.AssignedDoctor.User.LastName
-                : uploaderName,
-            PatientName = record.Patient?.User?.FirstName + " " + record.Patient?.User?.LastName,
-            AssignedDoctorName = record.AssignedDoctor != null 
-                ? "Dr. " + record.AssignedDoctor.User?.FirstName + " " + record.AssignedDoctor.User?.LastName 
-                : null,
+            UploadedBy = finalUploadedBy,
+            PatientName = record.Patient?.User != null 
+                ? record.Patient.User.FirstName + " " + record.Patient.User.LastName 
+                : uploaderName, // Fallback if record.Patient wasn't included (Optimization for GetPatientRecordsAsync)
+            AssignedDoctorName = assignedDocName,
+            AssignedDoctorId = record.AssignedDoctorId,
             AssignedDepartment = record.AssignedDoctor?.Department?.Name,
             IsCertified = cert != null,
-            CertifiedBy = cert?.Doctor?.User?.FirstName + " " + cert?.Doctor?.User?.LastName,
+            CertifiedBy = certifiedByDocName,
+            CertifiedById = cert?.DoctorId,
             CertifiedAt = cert?.SignedAt,
             Version = record.Version,
             CanDownload = canDownload,
@@ -964,7 +1046,8 @@ public class MedicalRecordsService : IMedicalRecordsService
                 FullName = $"Dr. {appointment.Doctor.User.FirstName} {appointment.Doctor.User.LastName}",
                 Department = appointment.Doctor.Department?.Name ?? "General",
                 SuggestionType = "Appointment",
-                SuggestionLabel = $"Appointment: {appointment.ScheduledAt:MMM d}"
+                SuggestionLabel = $"Appointment: {appointment.ScheduledAt:MMM d}",
+                ProfilePictureUrl = appointment.Doctor.User.ProfilePictureUrl
             };
         }
 
@@ -977,7 +1060,8 @@ public class MedicalRecordsService : IMedicalRecordsService
                 FullName = $"Dr. {patient.PrimaryDoctor.User.FirstName} {patient.PrimaryDoctor.User.LastName}",
                 Department = patient.PrimaryDoctor.Department?.Name ?? "General",
                 SuggestionType = "Primary",
-                SuggestionLabel = "Your primary doctor"
+                SuggestionLabel = "Your primary doctor",
+                ProfilePictureUrl = patient.PrimaryDoctor.User.ProfilePictureUrl
             };
         }
 
@@ -1011,7 +1095,8 @@ public class MedicalRecordsService : IMedicalRecordsService
                 FullName = $"Dr. {record.AssignedDoctor.User.FirstName} {record.AssignedDoctor.User.LastName}",
                 Department = record.AssignedDoctor.Department?.Name ?? "General",
                 SuggestionType = "Recent",
-                SuggestionLabel = $"Last visit {label}"
+                SuggestionLabel = $"Last visit {label}",
+                ProfilePictureUrl = record.AssignedDoctor.User.ProfilePictureUrl
             });
 
             if (seenIds.Count >= 3) break;

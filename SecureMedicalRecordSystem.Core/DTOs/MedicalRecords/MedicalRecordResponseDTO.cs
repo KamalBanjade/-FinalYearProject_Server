@@ -27,7 +27,11 @@ public class MedicalRecordResponseDTO
     // Certification Info
     public bool IsCertified { get; set; }
     public string? CertifiedBy { get; set; } // Doctor name
+    public Guid? CertifiedById { get; set; } // Doctor ID for profile link
     public DateTime? CertifiedAt { get; set; }
+    
+    // Assignment/Generation Info
+    public Guid? AssignedDoctorId { get; set; } // Added for profile link
     
     public int Version { get; set; }
     public bool CanDownload { get; set; } // Based on user permissions

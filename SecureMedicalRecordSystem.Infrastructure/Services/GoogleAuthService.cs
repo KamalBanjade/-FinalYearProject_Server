@@ -118,7 +118,7 @@ public class GoogleAuthService : IGoogleAuthService
             { "code", authorizationCode },
             { "client_id", clientId },
             { "client_secret", clientSecret },
-            { "redirect_uri", _configuration["Authentication:Google:RedirectUri"] },
+            { "redirect_uri", _configuration["Authentication:Google:RedirectUri"] ?? "" },
             { "grant_type", "authorization_code" }
         };
 

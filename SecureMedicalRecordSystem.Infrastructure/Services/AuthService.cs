@@ -28,6 +28,7 @@ public class AuthService : IAuthService
     private readonly IQRTokenService _qrTokenService;
     private readonly ITotpService _totpService;
     private readonly ITrustedDeviceService _trustedDeviceService;
+    private readonly ICachingService _cache;
 
     public AuthService(
         UserManager<ApplicationUser> userManager,
@@ -41,7 +42,8 @@ public class AuthService : IAuthService
         IKeyManagementService keyManagementService,
         IQRTokenService qrTokenService,
         ITotpService totpService,
-        ITrustedDeviceService trustedDeviceService)
+        ITrustedDeviceService trustedDeviceService,
+        ICachingService cache)
     {
         _userManager = userManager;
         _signInManager = signInManager;
@@ -55,6 +57,7 @@ public class AuthService : IAuthService
         _qrTokenService = qrTokenService;
         _totpService = totpService;
         _trustedDeviceService = trustedDeviceService;
+        _cache = cache;
     }
 
     public async Task<(bool Success, string Message, RegistrationResponseDTO? Data)> RegisterPatientAsync(RegisterRequestDTO request)
@@ -136,7 +139,7 @@ public class AuthService : IAuthService
 
             // 8. Generate Confirmation Token
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var template = _configuration["EmailTemplates:EmailConfirmationLinkTemplate"] ?? "";
+            var template = _urlProvider.EmailConfirmationLinkTemplate;
             
             var confirmationLink = template
                 .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(token))
@@ -272,7 +275,7 @@ public class AuthService : IAuthService
             var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
             
             // 10. Generate Invitation Link (Password Reset Link)
-            var template = _configuration["EmailTemplates:PasswordResetLinkTemplate"] ?? "";
+            var template = _urlProvider.PasswordResetLinkTemplate;
             var resetLink = template
                 .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(resetToken))
                 .Replace("[USERID]", user.Id.ToString());
@@ -366,7 +369,9 @@ public class AuthService : IAuthService
                 string? accessUrl = null;
                 DateTime? expiresAt = null;
 
-                var patient = await _context.Patients.FirstOrDefaultAsync(p => p.UserId == user.Id);
+                var patient = await _context.Patients
+                    .OrderBy(p => p.Id)
+                    .FirstOrDefaultAsync(p => p.UserId == user.Id);
                 if (patient != null)
                 {
                     var tokenResult = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
@@ -553,6 +558,7 @@ public class AuthService : IAuthService
         var result = await _userManager.ConfirmEmailAsync(user, token);
         if (result.Succeeded)
         {
+            await _cache.InvalidateAsync($"user:profile:{user.Id}");
             await _auditLogService.LogAsync(user.Id, "Email Confirmation", "Email confirmed successfully", "N/A", "System");
             return (true, "Email confirmed successfully.");
         }
@@ -601,6 +607,8 @@ public class AuthService : IAuthService
                 user.Id, 
                 "Password reset - all devices untrusted for security");
 
+            await _cache.InvalidateAsync($"user:profile:{user.Id}");
+
             await _auditLogService.LogAsync(user.Id, "Password Reset", "Password reset completed - all trusted devices revoked", "User will need to re-verify on all devices", "System");
             
             return (true, "Password reset successful. All trusted devices have been logged out for security.");
@@ -623,6 +631,8 @@ public class AuthService : IAuthService
                 await _userManager.UpdateAsync(user);
             }
 
+            await _cache.InvalidateAsync($"user:profile:{user.Id}");
+
             await _auditLogService.LogAsync(user.Id, "Change Password", "Password changed successfully", "N/A", "System");
             return (true, "Password changed successfully.");
         }
@@ -632,9 +642,14 @@ public class AuthService : IAuthService
 
     public async Task<ApplicationUser?> GetUserByIdAsync(Guid userId)
     {
-        return await _userManager.Users
-            .Include(u => u.PatientProfile)
-            .FirstOrDefaultAsync(u => u.Id == userId);
+        var cacheKey = $"user:profile:{userId}";
+        return await _cache.GetOrSetAsync(cacheKey, async () => 
+        {
+            return await _userManager.Users
+                .Include(u => u.PatientProfile)
+                .OrderBy(u => u.Id)
+                .FirstOrDefaultAsync(u => u.Id == userId);
+        }, TimeSpan.FromMinutes(15));
     }
 
     public async Task<ApplicationUser?> GetUserByEmailAsync(string email)
@@ -673,7 +688,9 @@ public class AuthService : IAuthService
         string? accessUrl = null;
         DateTime? expiresAt = null;
 
-        var patient = await _context.Patients.FirstOrDefaultAsync(p => p.UserId == user.Id);
+        var patient = await _context.Patients
+            .OrderBy(p => p.Id)
+            .FirstOrDefaultAsync(p => p.UserId == user.Id);
         if (patient != null)
         {
             var tokenResult = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
@@ -756,6 +773,11 @@ public class AuthService : IAuthService
 
         await _userManager.SetTwoFactorEnabledAsync(user, true);
         
+        user.TOTPSetupCompleted = true;
+        await _userManager.UpdateAsync(user);
+        
+        await _cache.InvalidateAsync($"user:profile:{user.Id}");
+        
         // Generate recovery codes
         var recoveryCodes = await _userManager.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
         var codesList = recoveryCodes?.ToList() ?? new List<string>();
@@ -778,6 +800,8 @@ public class AuthService : IAuthService
 
         await _userManager.SetTwoFactorEnabledAsync(user, false);
         await _userManager.ResetAuthenticatorKeyAsync(user);
+
+        await _cache.InvalidateAsync($"user:profile:{user.Id}");
 
         await _auditLogService.LogAsync(user.Id, "2FA Disable", "Two-factor authentication disabled", "N/A", "System");
 
@@ -1113,6 +1137,8 @@ public class AuthService : IAuthService
 
         if (!result.Succeeded) return (false, "Failed to update user status.");
 
+        await _cache.InvalidateAsync($"user:profile:{user.Id}");
+
         return (true, $"User {(isActive ? "activated" : "deactivated")} successfully.");
     }
 
@@ -1128,6 +1154,8 @@ public class AuthService : IAuthService
 
         var result = await _userManager.UpdateAsync(user);
         if (!result.Succeeded) return (false, "Failed to update user profile.");
+
+        await _cache.InvalidateAsync($"user:profile:{user.Id}");
 
         return (true, "User profile updated successfully.");
     }
@@ -1186,10 +1214,42 @@ public class AuthService : IAuthService
             return (false, "Failed to update user setup status.");
         }
 
+        await _cache.InvalidateAsync($"user:profile:{user.Id}");
+
         // 4. Log Action
         await _auditLogService.LogAsync(user.Id, "Security Setup Completed", "TOTP and medical QR setup finished", "N/A", "Browser");
 
         return (true, "Setup completed successfully.");
+    }
+
+    public async Task<(bool Success, string Message)> DeleteAccountAsync(Guid userId)
+    {
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user == null)
+        {
+            return (false, "User not found.");
+        }
+
+        // 1. Log the intent BEFORE deletion (while user ID still exists in DB)
+        await _auditLogService.LogAsync(userId, "Account Deletion", "User permanently deleted their account", "N/A", "Browser");
+
+        // 2. Delete the user
+        // Due to Cascade Delete configuration in ApplicationDbContext,
+        // deleting the ApplicationUser will automatically delete:
+        // - Patient/Doctor profiles
+        // - Trusted Devices
+        // - Refresh Tokens
+        // - Medical Records (for patients)
+        var result = await _userManager.DeleteAsync(user);
+        if (!result.Succeeded)
+        {
+            return (false, "Failed to delete account.");
+        }
+
+        // 3. Invalidate cache
+        await _cache.InvalidateAsync($"user:profile:{userId}");
+
+        return (true, "Account deleted successfully.");
     }
 
     private string FormatTOTPSecret(string secret)

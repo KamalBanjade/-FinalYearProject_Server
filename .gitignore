@@ -43,6 +43,8 @@ appsettings.Production.json
 appsettings.Staging.json
 *.user
 *.suo
+.env
+.env.*
 
 # Sensitive data
 Storage/EncryptedFiles/*

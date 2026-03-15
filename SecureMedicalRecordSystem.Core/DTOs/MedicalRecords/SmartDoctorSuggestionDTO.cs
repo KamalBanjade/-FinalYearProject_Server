@@ -28,4 +28,5 @@ public class DoctorSuggestionItem
 
     /// <summary>Human-readable label e.g. "Appointment: Mar 15" or "Last visit 2 days ago"</summary>
     public string? SuggestionLabel { get; set; }
+    public string? ProfilePictureUrl { get; set; }
 }

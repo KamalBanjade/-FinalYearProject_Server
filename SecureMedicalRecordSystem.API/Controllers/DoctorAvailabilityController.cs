@@ -28,6 +28,23 @@ public class DoctorAvailabilityController : ControllerBase
 
     private Guid GetUserId() => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
+    [HttpGet]
+    public async Task<ActionResult<ApiResponse<List<DoctorAvailabilityDTO>>>> GetDefaultSchedule()
+    {
+        var user = await _userManager.Users
+            .Include(u => u.DoctorProfile)
+            .FirstOrDefaultAsync(u => u.Id == GetUserId());
+
+        if (user?.DoctorProfile == null)
+            return BadRequest(ApiResponse<List<DoctorAvailabilityDTO>>.FailureResult("Doctor profile not found."));
+
+        var startDate = DateTime.UtcNow;
+        var endDate = startDate.AddDays(30);
+
+        var result = await _availabilityService.GetDoctorScheduleAsync(user.DoctorProfile.Id, startDate, endDate);
+        return Ok(ApiResponse<List<DoctorAvailabilityDTO>>.SuccessResult(result, "Schedule retrieved successfully."));
+    }
+
     [HttpGet("schedule")]
     public async Task<ActionResult<ApiResponse<List<DoctorAvailabilityDTO>>>> GetSchedule([FromQuery] DateTime startDate, [FromQuery] DateTime endDate)
     {

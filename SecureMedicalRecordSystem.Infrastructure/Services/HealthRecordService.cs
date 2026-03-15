@@ -518,7 +518,7 @@ public class HealthRecordService : IHealthRecordService
             var sections = record.CustomAttributes.GroupBy(a => a.SectionName);
             foreach (var section in sections)
             {
-                document.Add(new Paragraph(section.Key.ToUpper()).SetBold().SetFontSize(10).SetFontColor(brandSecondary).SetMarginTop(5));
+                document.Add(new Paragraph((section.Key ?? "General").ToUpper()).SetBold().SetFontSize(10).SetFontColor(brandSecondary).SetMarginTop(5));
                 var attrTable = new Table(new float[] { 2, 2, 1 }).UseAllAvailableWidth();
                 attrTable.SetMarginBottom(10);
 

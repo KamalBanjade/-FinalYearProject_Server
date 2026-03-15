@@ -448,4 +448,31 @@ public class AuthController : ControllerBase
         
         return Ok(ApiResponse.SuccessResult((object?)null, "All devices revoked successfully."));
     }
+
+    [HttpDelete("account")]
+    [Authorize]
+    public async Task<IActionResult> DeleteAccount()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(ApiResponse.FailureResult("Invalid user session."));
+        }
+
+        var result = await _authService.DeleteAccountAsync(userId);
+        if (!result.Success)
+        {
+            return BadRequest(ApiResponse.FailureResult(result.Message));
+        }
+
+        // Clear auth cookie
+        Response.Cookies.Delete("auth_token", new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = !_env.IsDevelopment(),
+            SameSite = _env.IsDevelopment() ? SameSiteMode.Lax : SameSiteMode.None
+        });
+
+        return Ok(ApiResponse.SuccessResult((object?)null, result.Message));
+    }
 }

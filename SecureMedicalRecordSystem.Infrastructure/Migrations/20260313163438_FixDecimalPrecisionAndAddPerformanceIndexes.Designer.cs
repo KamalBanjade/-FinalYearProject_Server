@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SecureMedicalRecordSystem.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using SecureMedicalRecordSystem.Infrastructure.Data;
 namespace SecureMedicalRecordSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260313163438_FixDecimalPrecisionAndAddPerformanceIndexes")]
+    partial class FixDecimalPrecisionAndAddPerformanceIndexes
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -435,16 +438,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<Guid>("AppointmentId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
                     b.Property<DateTime>("LinkedAt")
                         .HasColumnType("datetime2");
 
@@ -457,12 +450,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<string>("Notes")
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
-
-                    b.Property<DateTime?>("UpdatedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
 
@@ -902,11 +889,9 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .HasColumnType("bit");
 
                     b.Property<decimal?>("NormalRangeMax")
-                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<decimal?>("NormalRangeMin")
-                        .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<Guid>("RecordId")
@@ -1354,6 +1339,9 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<Guid?>("TemplateId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<Guid?>("TemplateId1")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("TemplateSnapshot")
                         .HasColumnType("nvarchar(max)");
 
@@ -1384,6 +1372,10 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.HasIndex("TemplateId")
                         .IsUnique()
                         .HasFilter("[TemplateId] IS NOT NULL");
+
+                    b.HasIndex("TemplateId1")
+                        .IsUnique()
+                        .HasFilter("[TemplateId1] IS NOT NULL");
 
                     b.ToTable("PatientHealthRecords");
                 });
@@ -1576,11 +1568,8 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<Guid?>("DesktopSessionId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid?>("DoctorId")
+                    b.Property<Guid>("DoctorId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("IPAddress")
-                        .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -1600,16 +1589,10 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<DateTime?>("TOTPVerifiedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("TokenType")
-                        .HasColumnType("int");
-
                     b.Property<DateTime?>("UpdatedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<string>("UpdatedBy")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("UserAgent")
                         .HasColumnType("nvarchar(max)");
 
                     b.HasKey("Id");
@@ -1695,8 +1678,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.HasIndex("BasedOnTemplateId");
 
                     b.HasIndex("CreatedBy");
-
-                    b.HasIndex("CreatedFromRecordId");
 
                     b.HasIndex("DepartmentId");
 
@@ -2154,6 +2135,10 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .HasForeignKey("TemplateId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("SecureMedicalRecordSystem.Core.Entities.Template", null)
+                        .WithOne("SourceRecord")
+                        .HasForeignKey("SecureMedicalRecordSystem.Core.Entities.PatientHealthRecord", "TemplateId1");
+
                     b.Navigation("Appointment");
 
                     b.Navigation("Doctor");
@@ -2214,7 +2199,8 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.HasOne("SecureMedicalRecordSystem.Core.Entities.Doctor", "Doctor")
                         .WithMany()
                         .HasForeignKey("DoctorId")
-                        .OnDelete(DeleteBehavior.NoAction);
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
                     b.HasOne("SecureMedicalRecordSystem.Core.Entities.Patient", "Patient")
                         .WithMany()
@@ -2242,11 +2228,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("SecureMedicalRecordSystem.Core.Entities.PatientHealthRecord", "SourceRecord")
-                        .WithMany()
-                        .HasForeignKey("CreatedFromRecordId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("SecureMedicalRecordSystem.Core.Entities.Department", "Department")
                         .WithMany()
                         .HasForeignKey("DepartmentId");
@@ -2256,8 +2237,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Navigation("Department");
 
                     b.Navigation("ParentTemplate");
-
-                    b.Navigation("SourceRecord");
                 });
 
             modelBuilder.Entity("SecureMedicalRecordSystem.Core.Entities.TemplateUsageHistory", b =>
@@ -2384,6 +2363,8 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
 
             modelBuilder.Entity("SecureMedicalRecordSystem.Core.Entities.Template", b =>
                 {
+                    b.Navigation("SourceRecord");
+
                     b.Navigation("UsageHistory");
                 });
 #pragma warning restore 612, 618

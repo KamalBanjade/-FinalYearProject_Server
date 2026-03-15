@@ -2,6 +2,7 @@ namespace SecureMedicalRecordSystem.Core.DTOs.Admin;
 
 public class SystemStatisticsDTO
 {
+    public string AdminFirstName { get; set; } = string.Empty;
     // User counts
     public int TotalUsers { get; set; }
     public int TotalDoctors { get; set; }

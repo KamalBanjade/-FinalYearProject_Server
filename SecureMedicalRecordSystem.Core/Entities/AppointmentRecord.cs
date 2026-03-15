@@ -2,10 +2,8 @@ using System.ComponentModel.DataAnnotations;
 
 namespace SecureMedicalRecordSystem.Core.Entities;
 
-public class AppointmentRecord
+public class AppointmentRecord : BaseEntity
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
-
     public Guid AppointmentId { get; set; }
     public Guid MedicalRecordId { get; set; }
 
@@ -16,6 +14,6 @@ public class AppointmentRecord
     public string? Notes { get; set; }
 
     // Navigation Properties
-    public Appointment Appointment { get; set; } = null!;
-    public MedicalRecord MedicalRecord { get; set; } = null!;
+    public virtual Appointment Appointment { get; set; } = null!;
+    public virtual MedicalRecord MedicalRecord { get; set; } = null!;
 }

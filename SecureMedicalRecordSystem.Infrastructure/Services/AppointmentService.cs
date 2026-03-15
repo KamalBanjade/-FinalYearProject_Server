@@ -240,12 +240,22 @@ public class AppointmentService : IAppointmentService
             var startOfDay = date.Value.Date;
             var endOfDay = startOfDay.AddDays(1);
             query = query.Where(a => a.AppointmentDate >= startOfDay && a.AppointmentDate < endOfDay);
+
+            // For active schedule, exclude cancelled, completed, and noshow
+            query = query.Where(a => a.Status != AppointmentStatus.Cancelled && 
+                                   a.Status != AppointmentStatus.Completed &&
+                                   a.Status != AppointmentStatus.NoShow);
         }
         else
         {
             var today = DateTime.UtcNow.Date;
             var futureDate = today.AddDays(30);
             query = query.Where(a => a.AppointmentDate >= today && a.AppointmentDate <= futureDate);
+
+            // For active schedule, exclude cancelled, completed, and noshow
+            query = query.Where(a => a.Status != AppointmentStatus.Cancelled && 
+                                   a.Status != AppointmentStatus.Completed &&
+                                   a.Status != AppointmentStatus.NoShow);
         }
 
         var appointments = await query.OrderByDescending(a => a.AppointmentDate).ToListAsync();
@@ -538,7 +548,8 @@ public class AppointmentService : IAppointmentService
                 FullName = $"Dr. {upcoming.Doctor.User.FirstName} {upcoming.Doctor.User.LastName}",
                 Department = upcoming.Doctor.Department?.Name ?? "General",
                 SuggestionType = "Appointment",
-                SuggestionLabel = $"Upcoming: {upcoming.ScheduledAt:MMM d}"
+                SuggestionLabel = $"Upcoming: {upcoming.ScheduledAt:MMM d}",
+                ProfilePictureUrl = upcoming.Doctor.User.ProfilePictureUrl
             };
         }
 
@@ -551,7 +562,8 @@ public class AppointmentService : IAppointmentService
                 FullName = $"Dr. {patient.PrimaryDoctor.User.FirstName} {patient.PrimaryDoctor.User.LastName}",
                 Department = patient.PrimaryDoctor.Department?.Name ?? "General",
                 SuggestionType = "Primary",
-                SuggestionLabel = "Primary Care Provider"
+                SuggestionLabel = "Primary Care Provider",
+                ProfilePictureUrl = patient.PrimaryDoctor.User.ProfilePictureUrl
             };
         }
 
@@ -578,7 +590,8 @@ public class AppointmentService : IAppointmentService
                     FullName = $"Dr. {app.Doctor.User.FirstName} {app.Doctor.User.LastName}",
                     Department = app.Doctor.Department?.Name ?? "General",
                     SuggestionType = "Recent",
-                    SuggestionLabel = $"Last visit {label}"
+                    SuggestionLabel = $"Last visit {label}",
+                    ProfilePictureUrl = app.Doctor.User.ProfilePictureUrl
                 });
 
                 if (seenIds.Count >= 3) break;
@@ -636,7 +649,8 @@ public class AppointmentService : IAppointmentService
             FullName = $"Dr. {d.User.FirstName} {d.User.LastName}",
             Department = d.Department?.Name ?? suggestedDepartment,
             SuggestionType = "Recommendation",
-            SuggestionLabel = $"Recommended for {suggestedDepartment}"
+            SuggestionLabel = $"Recommended for {suggestedDepartment}",
+            ProfilePictureUrl = d.User.ProfilePictureUrl
         }).ToList();
 
         return (true, $"Found {result.Count} suggestions for {suggestedDepartment}", result);
@@ -707,6 +721,7 @@ public class AppointmentService : IAppointmentService
             DoctorId = appointment.DoctorId,
             DoctorName = appointment.Doctor?.User != null ? $"Dr. {appointment.Doctor.User.FirstName} {appointment.Doctor.User.LastName}" : "Unknown",
             DoctorDepartment = appointment.Doctor?.Department?.Name ?? "General",
+            DoctorProfilePictureUrl = appointment.Doctor?.User?.ProfilePictureUrl,
             AppointmentDate = appointment.AppointmentDate,
             Status = displayStatus,
             ReasonForVisit = appointment.ReasonForVisit,

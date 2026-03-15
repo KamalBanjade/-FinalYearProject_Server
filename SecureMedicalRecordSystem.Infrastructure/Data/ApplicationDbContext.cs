@@ -54,6 +54,18 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         modelBuilder.Entity<Appointment>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<QRToken>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<DoctorAvailability>().HasQueryFilter(e => !e.IsDeleted);
+        
+        // Added filters for dependent entities to match principals
+        modelBuilder.Entity<AccessSession>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<AppointmentRecord>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<DesktopSession>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<MobileScannerPairing>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<PatientHealthRecord>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<ScanHistory>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<TemplateUsageHistory>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<HealthAttribute>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Template>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<TemplateVersionHistory>().HasQueryFilter(e => !e.IsDeleted);
 
         // AuditLog specific configurations
         modelBuilder.Entity<AuditLog>(entity =>
@@ -255,8 +267,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
 
         // Existing single-column indexes
         modelBuilder.Entity<AuditLog>().HasIndex(a => a.Timestamp);
+        modelBuilder.Entity<AuditLog>().HasIndex(a => a.Action);
+        modelBuilder.Entity<AuditLog>().HasIndex(a => a.Severity);
         modelBuilder.Entity<QRToken>().HasIndex(q => q.ExpiresAt);
         modelBuilder.Entity<Appointment>().HasIndex(a => a.ScheduledAt);
+        modelBuilder.Entity<Appointment>().HasIndex(a => new { a.DoctorId, a.AppointmentDate, a.Status });
+        modelBuilder.Entity<MedicalRecord>().HasIndex(m => new { m.AssignedDoctorId, m.CreatedAt, m.State });
+        modelBuilder.Entity<ScanHistory>().HasIndex(s => new { s.DoctorId, s.ScannedAt });
 
         // --- NEW PERFORMANCE INDEXES ---
 
@@ -329,6 +346,13 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             
             entity.Property(e => e.RecordDate).IsRequired();
             entity.Property(e => e.IsStructured).HasDefaultValue(true);
+            
+            // Precision for decimals
+            entity.Property(e => e.Temperature).HasPrecision(18, 2);
+            entity.Property(e => e.Weight).HasPrecision(18, 2);
+            entity.Property(e => e.Height).HasPrecision(18, 2);
+            entity.Property(e => e.BMI).HasPrecision(18, 2);
+            entity.Property(e => e.SpO2).HasPrecision(18, 2);
         });
 
         // HealthAttribute
@@ -349,6 +373,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.Property(e => e.FieldName).IsRequired();
             entity.Property(e => e.FieldLabel).IsRequired();
             entity.Property(e => e.FieldValue).IsRequired();
+            
+            // Precision for decimals
+            entity.Property(e => e.NormalRangeMin).HasPrecision(18, 2);
+            entity.Property(e => e.NormalRangeMax).HasPrecision(18, 2);
         });
 
         // Template
@@ -370,6 +398,11 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.HasOne(e => e.ParentTemplate)
                   .WithMany()
                   .HasForeignKey(e => e.BasedOnTemplateId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(e => e.SourceRecord)
+                  .WithMany()
+                  .HasForeignKey(e => e.CreatedFromRecordId)
                   .OnDelete(DeleteBehavior.Restrict);
             
             entity.Property(e => e.TemplateName).IsRequired();

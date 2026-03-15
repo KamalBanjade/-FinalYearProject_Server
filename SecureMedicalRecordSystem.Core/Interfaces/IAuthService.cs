@@ -49,4 +49,5 @@ public interface IAuthService
 
     Task<(bool Success, string Message)> UpdateUserStatusAsync(Guid userId, bool isActive);
     Task<(bool Success, string Message)> UpdateUserAsync(Guid userId, UpdateUserRequestDTO request);
+    Task<(bool Success, string Message)> DeleteAccountAsync(Guid userId);
 }

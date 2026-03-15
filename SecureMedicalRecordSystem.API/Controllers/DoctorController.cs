@@ -23,6 +23,8 @@ public class DoctorController : ControllerBase
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly IMedicalRecordsService _medicalRecordsService;
     private readonly IImageStorageService _imageStorageService;
+    private readonly IAuditLogService _auditLogService;
+    private readonly ICachingService _cache;
     private readonly ILogger<DoctorController> _logger;
 
     private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
@@ -35,12 +37,16 @@ public class DoctorController : ControllerBase
         UserManager<ApplicationUser> userManager,
         IMedicalRecordsService medicalRecordsService,
         IImageStorageService imageStorageService,
+        IAuditLogService auditLogService,
+        ICachingService cache,
         ILogger<DoctorController> logger)
     {
         _context = context;
         _userManager = userManager;
         _medicalRecordsService = medicalRecordsService;
         _imageStorageService = imageStorageService;
+        _auditLogService = auditLogService;
+        _cache = cache;
         _logger = logger;
     }
 
@@ -51,15 +57,23 @@ public class DoctorController : ControllerBase
         if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
             return Unauthorized(ApiResponse.FailureResult("Invalid session."));
 
-        var doctor = await _context.Doctors
-            .Include(d => d.User)
-            .Include(d => d.Department)
-            .FirstOrDefaultAsync(d => d.UserId == userId);
+        var cacheKey = $"doctor:profile:{userId}";
+        
+        var profile = await _cache.GetOrSetAsync(cacheKey, async () =>
+        {
+            var doctor = await _context.Doctors
+                .Include(d => d.User)
+                .Include(d => d.Department)
+                .FirstOrDefaultAsync(d => d.UserId == userId);
 
-        if (doctor == null)
+            if (doctor == null) return null!;
+
+            return BuildExtendedProfileDTO(doctor);
+        }, TimeSpan.FromMinutes(30));
+
+        if (profile == null)
             return NotFound(ApiResponse.FailureResult("Doctor profile not found."));
 
-        var profile = BuildExtendedProfileDTO(doctor);
         return Ok(ApiResponse.SuccessResult(profile, "Profile retrieved successfully."));
     }
 
@@ -105,11 +119,13 @@ public class DoctorController : ControllerBase
                 doctor.CustomAttributesJson = JsonSerializer.Serialize(updateDto.CustomAttributes);
 
             await _context.SaveChangesAsync();
+            await _cache.InvalidateAsync($"doctor:profile:{userId}");
 
             // Return updated profile with new score
             var updated = await _context.Doctors
                 .Include(d => d.User)
                 .Include(d => d.Department)
+                .OrderBy(d => d.Id)
                 .FirstOrDefaultAsync(d => d.Id == doctor.Id);
 
             var result = BuildExtendedProfileDTO(updated!);
@@ -143,6 +159,7 @@ public class DoctorController : ControllerBase
             user.ProfilePictureUrl = uploadResult;
             
             await _userManager.UpdateAsync(user);
+            await _cache.InvalidateAsync($"doctor:profile:{user.Id}");
 
             return Ok(ApiResponse.SuccessResult(new { url = uploadResult }, "Profile picture updated successfully."));
         }
@@ -166,6 +183,7 @@ public class DoctorController : ControllerBase
             await _imageStorageService.DeleteImageAsync(user.ProfilePictureUrl);
             user.ProfilePictureUrl = null;
             await _userManager.UpdateAsync(user);
+            await _cache.InvalidateAsync($"doctor:profile:{user.Id}");
 
             return Ok(ApiResponse.SuccessResult((object?)null, "Profile picture deleted successfully."));
         }
@@ -287,6 +305,17 @@ public class DoctorController : ControllerBase
     {
         // Placeholder for Phase 5
         return Ok(ApiResponse.SuccessResult(new List<object>(), "Doctor appointments retrieved (placeholder)."));
+    }
+
+    [HttpGet("statistics")]
+    public async Task<IActionResult> GetStatistics()
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return Unauthorized(ApiResponse.FailureResult("Invalid session."));
+
+        var stats = await _auditLogService.GetDoctorStatisticsAsync(userId);
+        return Ok(ApiResponse.SuccessResult(stats, "Doctor statistics retrieved successfully."));
     }
 
     [HttpGet("patients")]

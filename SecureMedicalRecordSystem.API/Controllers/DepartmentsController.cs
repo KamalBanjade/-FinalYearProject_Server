@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using SecureMedicalRecordSystem.Core.DTOs;
 using SecureMedicalRecordSystem.Core.Entities;
 using SecureMedicalRecordSystem.Infrastructure.Data;
+using SecureMedicalRecordSystem.Core.Interfaces;
 
 namespace SecureMedicalRecordSystem.API.Controllers;
 
@@ -13,27 +14,33 @@ namespace SecureMedicalRecordSystem.API.Controllers;
 public class DepartmentsController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
+    private readonly ICachingService _cache;
+    private const string DeptCacheKey = "lookups:departments";
 
-    public DepartmentsController(ApplicationDbContext context)
+    public DepartmentsController(ApplicationDbContext context, ICachingService cache)
     {
         _context = context;
+        _cache = cache;
     }
 
     [HttpGet]
     [AllowAnonymous] // Patient upload needs to see these too
     public async Task<IActionResult> GetAll()
     {
-        var departments = await _context.Departments
-            .OrderBy(d => d.Name)
-            .Select(d => new
-            {
-                d.Id,
-                d.Name,
-                d.Description,
-                d.IsActive,
-                DoctorCount = d.Doctors.Count
-            })
-            .ToListAsync();
+        var departments = await _cache.GetOrSetAsync(DeptCacheKey, async () =>
+        {
+            return await _context.Departments
+                .OrderBy(d => d.Name)
+                .Select(d => new
+                {
+                    d.Id,
+                    d.Name,
+                    d.Description,
+                    d.IsActive,
+                    DoctorCount = d.Doctors.Count
+                })
+                .ToListAsync();
+        }, TimeSpan.FromHours(1));
 
         return Ok(ApiResponse.SuccessResult(departments, "Departments retrieved successfully."));
     }
@@ -72,6 +79,8 @@ public class DepartmentsController : ControllerBase
         _context.Departments.Add(department);
         await _context.SaveChangesAsync();
 
+        await _cache.InvalidateAsync(DeptCacheKey);
+
         return CreatedAtAction(nameof(GetById), new { id = department.Id }, ApiResponse.SuccessResult(department, "Department created."));
     }
 
@@ -88,6 +97,7 @@ public class DepartmentsController : ControllerBase
         department.UpdatedBy = User.Identity?.Name ?? "Admin";
 
         await _context.SaveChangesAsync();
+        await _cache.InvalidateAsync(DeptCacheKey);
         return Ok(ApiResponse.SuccessResult(department, "Department updated successfully."));
     }
 
@@ -104,6 +114,7 @@ public class DepartmentsController : ControllerBase
 
         _context.Departments.Remove(department);
         await _context.SaveChangesAsync();
+        await _cache.InvalidateAsync(DeptCacheKey);
 
         return Ok(ApiResponse.SuccessResult((object?)null, "Department deleted successfully."));
     }

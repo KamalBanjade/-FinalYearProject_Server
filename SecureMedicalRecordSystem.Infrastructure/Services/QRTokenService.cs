@@ -57,6 +57,18 @@ public class QRTokenService : IQRTokenService
         // Update tracking metadata
         qrToken.AccessCount++;
         qrToken.LastAccessedAt = DateTime.UtcNow;
+        
+        // Log to ScanHistory for trend tracking unified with AccessCount
+        var scanHistory = new ScanHistory
+        {
+            PatientId = qrToken.PatientId,
+            ScannedAt = DateTime.UtcNow,
+            TokenType = qrToken.TokenType,
+            AccessGranted = true, // If we reached here, token is valid
+            TOTPVerified = qrToken.TokenType == QRTokenType.Emergency
+        };
+        _context.ScanHistories.Add(scanHistory);
+        
         await _context.SaveChangesAsync();
 
         return (true, qrToken);

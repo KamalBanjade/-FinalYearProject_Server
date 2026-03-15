@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using SecureMedicalRecordSystem.Core.DTOs;
 using SecureMedicalRecordSystem.Core.DTOs.QR;
+using SecureMedicalRecordSystem.Core.Entities;
 using SecureMedicalRecordSystem.Core.Enums;
 using SecureMedicalRecordSystem.Core.Interfaces;
 using SecureMedicalRecordSystem.Infrastructure.Data;
@@ -50,6 +51,22 @@ public class AccessController : ControllerBase
 
         var isEmergency = qrToken.TokenType == QRTokenType.Emergency;
         var requiresTotp = !isEmergency && patient.User.TwoFactorEnabled;
+
+        // 4. Log scan attempt
+        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var userAgent = Request.Headers["User-Agent"].ToString() ?? "unknown";
+        
+        await _context.ScanHistories.AddAsync(new ScanHistory
+        {
+            PatientId = patient.Id,
+            ScannedAt = DateTime.UtcNow,
+            TokenType = qrToken.TokenType,
+            IPAddress = ipAddress,
+            UserAgent = userAgent,
+            AccessGranted = !requiresTotp,
+            TOTPVerified = false
+        });
+        await _context.SaveChangesAsync();
 
         return Ok(ApiResponse.SuccessResult(new
         {
@@ -116,6 +133,19 @@ public class AccessController : ControllerBase
             qrToken.Id.ToString(),
             AuditSeverity.Warning);
 
+        // 6. Log to ScanHistory for trend tracking
+        await _context.ScanHistories.AddAsync(new ScanHistory
+        {
+            PatientId = patient.Id,
+            ScannedAt = DateTime.UtcNow,
+            TokenType = QRTokenType.Emergency,
+            IPAddress = ipAddress,
+            UserAgent = userAgent,
+            AccessGranted = true,
+            TOTPVerified = true // Emergency is self-verified
+        });
+        await _context.SaveChangesAsync();
+
         // 6. Return emergency data directly as payload
         return Ok(ApiResponse.SuccessResult(emergencyData, "Emergency medical information retrieved successfully."));
     }
@@ -163,7 +193,7 @@ public class AccessController : ControllerBase
         {
             var patient = await _context.Patients
                 .Include(p => p.User)
-                .Include(p => p.PrimaryDoctor)
+                .Include(p => p.PrimaryDoctor!)
                     .ThenInclude(d => d.User)
                 .FirstOrDefaultAsync(p => p.Id == session.PatientId);
 

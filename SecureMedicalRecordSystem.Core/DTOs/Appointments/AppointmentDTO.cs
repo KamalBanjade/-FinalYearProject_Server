@@ -12,6 +12,7 @@ public class AppointmentDTO
     public Guid DoctorId { get; set; }
     public string DoctorName { get; set; } = string.Empty;
     public string DoctorDepartment { get; set; } = string.Empty;
+    public string? DoctorProfilePictureUrl { get; set; }
     public DateTime AppointmentDate { get; set; }
     public int Duration { get; set; }
     public string Status { get; set; } = string.Empty; // "Scheduled", "Confirmed", etc.

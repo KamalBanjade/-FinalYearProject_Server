@@ -19,6 +19,8 @@ using SecureMedicalRecordSystem.Infrastructure.BackgroundJobs;
 using Serilog;
 using Serilog.Events;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
+using dotenv.net;
 
 // Initial bootstrap logger
 Log.Logger = new LoggerConfiguration()
@@ -30,6 +32,9 @@ Log.Logger = new LoggerConfiguration()
 
 try
 {
+    // Load local .env file early
+    DotEnv.Load();
+    
     Log.Information("Starting Secure Medical Record API...");
     var builder = WebApplication.CreateBuilder(args);
 
@@ -52,9 +57,17 @@ try
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSignalR();
     builder.Services.AddMemoryCache();
+    
+    // Redis Caching Registration
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = builder.Configuration.GetConnectionString("Redis") ?? "localhost:6379";
+        options.InstanceName = "SecureMedical:";
+    });
 
     // DI Registrations - Phase 1
     builder.Services.AddSingleton<ILocalUrlProvider, LocalUrlProvider>();
+    builder.Services.AddScoped<ICachingService, CachingService>();
     builder.Services.AddScoped<IAuditLogService, AuditLogService>();
     builder.Services.AddScoped<IAuthService, AuthService>();
     builder.Services.AddScoped<IEmailService, EmailService>();
@@ -83,6 +96,8 @@ try
     builder.Services.AddHostedService<EmailReminderService>();
     builder.Services.AddHostedService<SecureMedicalRecordSystem.API.BackgroundServices.TrustedDeviceCleanupService>();
     builder.Services.AddHostedService<AppointmentStatusWorker>();
+    builder.Services.AddScoped<IDoctorStatisticsService, DoctorStatisticsService>();
+    builder.Services.AddScoped<IPatientStatisticsService, PatientStatisticsService>();
 
 
 

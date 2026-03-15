@@ -14,7 +14,8 @@ public interface IAuditLogService
         DateTime? fromDate = null, 
         DateTime? toDate = null);
 
-    Task<SecureMedicalRecordSystem.Core.DTOs.Admin.SystemStatisticsDTO> GetSystemStatisticsAsync();
+    Task<SecureMedicalRecordSystem.Core.DTOs.Admin.SystemStatisticsDTO> GetSystemStatisticsAsync(Guid adminUserId);
+    Task<SecureMedicalRecordSystem.Core.DTOs.Doctor.DoctorStatisticsDTO> GetDoctorStatisticsAsync(Guid doctorUserId);
     Task<List<SecureMedicalRecordSystem.Core.DTOs.Admin.SecurityAlertDTO>> GetSecurityAlertsAsync();
     Task<int> ApplyRetentionPolicyAsync(int retentionDays);
 }

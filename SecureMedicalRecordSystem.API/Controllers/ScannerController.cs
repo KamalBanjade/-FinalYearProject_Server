@@ -118,7 +118,8 @@ public class ScannerController : ControllerBase
             MobileDeviceId = request.MobileDeviceId,
             ScannedAt = DateTime.UtcNow,
             TOTPVerified = patientToken.TokenType == QRTokenType.Emergency,
-            AccessGranted = patientToken.TokenType == QRTokenType.Emergency
+            AccessGranted = patientToken.TokenType == QRTokenType.Emergency,
+            TokenType = patientToken.TokenType
         };
         await _context.ScanHistories.AddAsync(scanLog);
 

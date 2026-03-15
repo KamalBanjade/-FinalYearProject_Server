@@ -54,6 +54,11 @@ public class TigrisStorageService : ITigrisStorageService
                 _logger.LogInformation("Bucket already exists: {Bucket}", _bucketName);
             }
         }
+        catch (AmazonS3Exception ex) when (ex.ErrorCode == "InvalidAccessKeyId" || ex.Message.Contains("access key ID you provided does not exist"))
+        {
+            _logger.LogWarning("Tigris credentials are not valid or missing. Skipping bucket initialization. Error: {Message}", ex.Message);
+            // Don't throw - allow app to start without Tigris in dev
+        }
         catch (AmazonS3Exception ex)
         {
             _logger.LogError(ex, "Error during bucket initialization for '{Bucket}': {Message}", _bucketName, ex.Message);

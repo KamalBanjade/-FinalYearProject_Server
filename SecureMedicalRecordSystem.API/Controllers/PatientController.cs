@@ -395,7 +395,8 @@ public class PatientController : ControllerBase
             {
                 Id = d.Id,
                 FirstName = d.User.FirstName,
-                LastName = d.User.LastName
+                LastName = d.User.LastName,
+                ProfilePictureUrl = d.User.ProfilePictureUrl
             })
             .ToListAsync();
 

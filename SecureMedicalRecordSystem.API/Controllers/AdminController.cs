@@ -166,10 +166,16 @@ public class AdminController : ControllerBase
         return Ok(ApiResponse.SuccessResult(response, "Audit logs retrieved successfully."));
     }
 
-    [HttpGet("statistics")]
+    [HttpGet("dashboard/stats")]
     public async Task<IActionResult> GetSystemStatistics()
     {
-        var stats = await _auditLogService.GetSystemStatisticsAsync();
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized(ApiResponse.FailureResult("Invalid session."));
+        }
+
+        var stats = await _auditLogService.GetSystemStatisticsAsync(userId);
         return Ok(ApiResponse.SuccessResult(stats, "System statistics retrieved successfully."));
     }
 

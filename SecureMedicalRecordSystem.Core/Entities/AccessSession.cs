@@ -13,11 +13,11 @@ public class AccessSession : BaseEntity
 
     [Required]
     public Guid QRTokenId { get; set; }
-    public QRToken QRToken { get; set; } = null!;
+    public virtual QRToken QRToken { get; set; } = null!;
 
     [Required]
     public Guid PatientId { get; set; }
-    public Patient Patient { get; set; } = null!;
+    public virtual Patient Patient { get; set; } = null!;
 
     [Required]
     public DateTime ExpiresAt { get; set; }
