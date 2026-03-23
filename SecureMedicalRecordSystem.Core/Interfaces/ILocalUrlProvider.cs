@@ -8,9 +8,15 @@ namespace SecureMedicalRecordSystem.Core.Interfaces;
 public interface ILocalUrlProvider
 {
     /// <summary>
-    /// Resolved frontend base URL. Example: http://192.168.1.8:3000
+    /// Resolved frontend base URL (defaulting to localhost:3000).
     /// </summary>
     string FrontendBaseUrl { get; }
+
+    /// <summary>
+    /// Resolved frontend base URL using local IP (e.g. http://192.168.1.70:3000).
+    /// Used for QR codes and external device access.
+    /// </summary>
+    string FrontendIpBaseUrl { get; }
 
     /// <summary>
     /// Resolved backend/API base URL. Example: http://192.168.1.8:5004

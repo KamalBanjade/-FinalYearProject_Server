@@ -84,7 +84,7 @@ public class MedicalRecordsService : IMedicalRecordsService
             using var encryptedStream = await _encryptionService.EncryptFileAsync(rawStream);
 
             // 5. Upload to Tigris
-            var timestamp = DateTime.UtcNow;
+            var timestamp = DateTime.Now;
             var objectKey = $"{patientId}/{timestamp:yyyy}/{timestamp:MM}/{Guid.NewGuid()}.enc";
 
             var uploadedKey = await _tigrisService.UploadFileAsync(
@@ -107,12 +107,12 @@ public class MedicalRecordsService : IMedicalRecordsService
                 MimeType = uploadDto.File.ContentType,
                 RecordType = uploadDto.RecordType,
                 Description = uploadDto.Description,
-                RecordDate = uploadDto.RecordDate ?? DateTime.UtcNow,
+                RecordDate = uploadDto.RecordDate ?? DateTime.Now,
                 Tags = uploadDto.Tags,
                 State = RecordState.Pending,
                 Version = 1,
                 IsLatestVersion = true,
-                UploadedAt = DateTime.UtcNow,
+                UploadedAt = DateTime.Now,
                 CreatedBy = patient.User.Email ?? "System"
             };
 
@@ -463,6 +463,7 @@ public class MedicalRecordsService : IMedicalRecordsService
             EmergencyContactPhone = p.EmergencyContactPhone,
             EmergencyContactRelationship = p.EmergencyContactRelationship,
             SharedRecordsCount = sharedStats.Count,
+            AppointmentCount = await _context.Appointments.CountAsync(a => a.PatientId == p.Id && a.DoctorId == doctor.Id && !a.IsDeleted),
             LatestSharedRecordDate = sharedStats.Any() ? sharedStats.Max() : null
         };
 
@@ -471,53 +472,55 @@ public class MedicalRecordsService : IMedicalRecordsService
 
     public async Task<(bool Success, string Message, List<PatientListResponseDTO>? Data)> GetPatientsForDoctorAsync(Guid doctorUserId)
     {
-        var doctor = await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == doctorUserId);
+        var doctor = await _context.Doctors.AsNoTracking().FirstOrDefaultAsync(d => d.UserId == doctorUserId);
         if (doctor == null)
             return (false, "Doctor profile not found.", null);
 
-        // Efficient combined query: Get patients and their record stats in one round-trip
-        var patientData = await _context.MedicalRecords
-            .AsNoTracking()
+        // Identify all patients linked to this doctor via records, appointments, or primary status
+        var patientIds = await _context.MedicalRecords
             .Where(r => r.AssignedDoctorId == doctor.Id && !r.IsDeleted)
-            .GroupBy(r => r.PatientId)
-            .Select(g => new
-            {
-                PatientId = g.Key,
-                SharedRecordsCount = g.Count(),
-                LatestRecordDate = g.Max(r => r.UploadedAt),
-                Patient = _context.Patients
-                    .Include(p => p.User)
-                    .OrderBy(p => p.Id)
-                    .FirstOrDefault(p => p.Id == g.Key)
-            })
+            .Select(r => r.PatientId)
+            .Union(_context.Appointments
+                .Where(a => a.DoctorId == doctor.Id && !a.IsDeleted)
+                .Select(a => a.PatientId))
+            .Union(_context.Patients
+                .Where(p => p.PrimaryDoctorId == doctor.Id)
+                .Select(p => p.Id))
+            .Distinct()
             .ToListAsync();
 
-        if (!patientData.Any())
+        if (!patientIds.Any())
             return (true, "No patients found.", new List<PatientListResponseDTO>());
 
-        var result = patientData
-            .Where(pd => pd.Patient != null)
-            .Select(pd => {
-                var p = pd.Patient!;
-                return new PatientListResponseDTO
-                {
-                    Id = p.Id,
-                    FirstName = p.User?.FirstName ?? "",
-                    LastName = p.User?.LastName ?? "",
-                    Email = p.User?.Email ?? "",
-                    DateOfBirth = p.DateOfBirth,
-                    Gender = p.Gender,
-                    BloodType = p.BloodType,
-                    Allergies = p.Allergies,
-                    EmergencyContactName = p.EmergencyContactName,
-                    EmergencyContactPhone = p.EmergencyContactPhone,
-                    EmergencyContactRelationship = p.EmergencyContactRelationship,
-                    SharedRecordsCount = pd.SharedRecordsCount,
-                    LatestSharedRecordDate = pd.LatestRecordDate
-                };
+        var result = await _context.Patients
+            .AsNoTracking()
+            .Include(p => p.User)
+            .Where(p => patientIds.Contains(p.Id))
+            .Select(p => new PatientListResponseDTO
+            {
+                Id = p.Id,
+                FirstName = p.User != null ? p.User.FirstName : "",
+                LastName = p.User != null ? p.User.LastName : "",
+                Email = p.User != null ? p.User.Email : "",
+                DateOfBirth = p.DateOfBirth,
+                Gender = p.Gender,
+                BloodType = p.BloodType,
+                Allergies = p.Allergies,
+                EmergencyContactName = p.EmergencyContactName,
+                EmergencyContactPhone = p.EmergencyContactPhone,
+                EmergencyContactRelationship = p.EmergencyContactRelationship,
+                IsPrimary = p.PrimaryDoctorId == doctor.Id,
+                SharedRecordsCount = _context.MedicalRecords.Count(r => r.PatientId == p.Id && r.AssignedDoctorId == doctor.Id && !r.IsDeleted),
+                AppointmentCount = _context.Appointments.Count(a => a.PatientId == p.Id && a.DoctorId == doctor.Id && !a.IsDeleted),
+                LatestSharedRecordDate = _context.MedicalRecords
+                    .Where(r => r.PatientId == p.Id && r.AssignedDoctorId == doctor.Id && !r.IsDeleted)
+                    .Max(r => (DateTime?)r.UploadedAt),
+                LastAppointmentDate = _context.Appointments
+                    .Where(a => a.PatientId == p.Id && a.DoctorId == doctor.Id && !a.IsDeleted)
+                    .Max(a => (DateTime?)a.AppointmentDate)
             })
-            .OrderByDescending(p => p.LatestSharedRecordDate)
-            .ToList();
+            .OrderByDescending(p => p.LastAppointmentDate ?? p.LatestSharedRecordDate ?? DateTime.MinValue)
+            .ToListAsync();
 
         return (true, "Patients retrieved successfully.", result);
     }
@@ -544,8 +547,8 @@ public class MedicalRecordsService : IMedicalRecordsService
         if (updateDto.RecordDate != null) record.RecordDate = updateDto.RecordDate.Value;
         if (updateDto.Tags != null) record.Tags = updateDto.Tags;
 
-        record.LastModifiedAt = DateTime.UtcNow;
-        record.UpdatedAt = DateTime.UtcNow;
+        record.LastModifiedAt = DateTime.Now;
+        record.UpdatedAt = DateTime.Now;
         record.UpdatedBy = requestingUserId.ToString();
 
         await _context.SaveChangesAsync();
@@ -571,7 +574,7 @@ public class MedicalRecordsService : IMedicalRecordsService
         }
 
         record.IsDeleted = true;
-        record.DeletedAt = DateTime.UtcNow;
+        record.DeletedAt = DateTime.Now;
         record.DeletedBy = requestingUserId;
         record.IsLatestVersion = false;
 
@@ -608,7 +611,7 @@ public class MedicalRecordsService : IMedicalRecordsService
 
         record.State = RecordState.Pending;
         record.Notes = null; // Clear any prior rejection reason
-        record.LastModifiedAt = DateTime.UtcNow;
+        record.LastModifiedAt = DateTime.Now;
         await _context.SaveChangesAsync();
 
         await _auditLogService.LogAsync(patientUserId, "Record Submitted for Review",
@@ -667,15 +670,15 @@ public class MedicalRecordsService : IMedicalRecordsService
                 DoctorId = doctor.Id,
                 RecordHash = record.FileHash, // Store hash that was signed
                 DigitalSignature = signature,
-                SignedAt = DateTime.UtcNow,
+                SignedAt = DateTime.Now,
                 CertificationNotes = dto.CertificationNotes,
                 IsValid = true,
                 CreatedBy = doctorUser.Email ?? "Doctor"
             };
 
             record.State = RecordState.Certified;
-            record.CertifiedAt = DateTime.UtcNow;
-            record.LastModifiedAt = DateTime.UtcNow;
+            record.CertifiedAt = DateTime.Now;
+            record.LastModifiedAt = DateTime.Now;
 
             await _context.RecordCertifications.AddAsync(certification);
             await _context.SaveChangesAsync();
@@ -722,7 +725,7 @@ public class MedicalRecordsService : IMedicalRecordsService
 
         record.State = RecordState.Draft; // Send back to draft so patient can re-upload
         record.Notes = $"REJECTED: {dto.RejectionReason}";
-        record.LastModifiedAt = DateTime.UtcNow;
+        record.LastModifiedAt = DateTime.Now;
         await _context.SaveChangesAsync();
 
         await _auditLogService.LogAsync(doctorUserId, "Record Rejected",
@@ -759,7 +762,7 @@ public class MedicalRecordsService : IMedicalRecordsService
             return (false, $"Cannot archive: record is currently '{record.State}'. Only Certified records can be archived.", null);
 
         record.State = RecordState.Archived;
-        record.LastModifiedAt = DateTime.UtcNow;
+        record.LastModifiedAt = DateTime.Now;
         await _context.SaveChangesAsync();
 
         await _auditLogService.LogAsync(requestingUserId, "Record Archived",

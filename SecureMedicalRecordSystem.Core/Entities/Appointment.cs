@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using SecureMedicalRecordSystem.Core.Enums;
 
 namespace SecureMedicalRecordSystem.Core.Entities;
@@ -32,8 +33,14 @@ public class Appointment : BaseEntity
     public bool ReminderSent { get; set; } = false;
     public new Guid CreatedBy { get; set; }
 
+    // Follow-Up Tracking
+    public Guid? ParentAppointmentId { get; set; }
+
     // Navigation
     public Patient Patient { get; set; } = null!;
     public Doctor Doctor { get; set; } = null!;
     public ICollection<AppointmentRecord> LinkedRecords { get; set; } = new List<AppointmentRecord>();
+
+    [ForeignKey("ParentAppointmentId")]
+    public virtual Appointment? ParentAppointment { get; set; }
 }

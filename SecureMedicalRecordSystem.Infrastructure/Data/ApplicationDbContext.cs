@@ -31,6 +31,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<DesktopSession> DesktopSessions => Set<DesktopSession>();
     public DbSet<MobileScannerPairing> MobileScannerPairings => Set<MobileScannerPairing>();
     public DbSet<ScanHistory> ScanHistories => Set<ScanHistory>();
+    public DbSet<CommonLabUnit> CommonLabUnits => Set<CommonLabUnit>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -66,6 +67,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         modelBuilder.Entity<HealthAttribute>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<Template>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<TemplateVersionHistory>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<CommonLabUnit>().HasQueryFilter(e => !e.IsDeleted);
 
         // AuditLog specific configurations
         modelBuilder.Entity<AuditLog>(entity =>
@@ -384,15 +386,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         {
             entity.HasKey(e => e.Id);
             
-            entity.HasIndex(e => e.CreatedBy);
+            entity.HasIndex(e => e.CreatorId);
             entity.HasIndex(e => e.DepartmentId);
             entity.HasIndex(e => e.Visibility);
             entity.HasIndex(e => e.UsageCount);
-            entity.HasIndex(e => new { e.CreatedBy, e.TemplateName }).IsUnique();
+            entity.HasIndex(e => new { e.CreatorId, e.TemplateName }).IsUnique();
             
             entity.HasOne(e => e.Creator)
                   .WithMany()
-                  .HasForeignKey(e => e.CreatedBy)
+                  .HasForeignKey(e => e.CreatorId)
                   .OnDelete(DeleteBehavior.Restrict);
             
             entity.HasOne(e => e.ParentTemplate)
@@ -508,6 +510,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .WithMany(d => d.ScanHistories)
                   .HasForeignKey(e => e.DesktopSessionId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        // CommonLabUnit configurations
+        modelBuilder.Entity<CommonLabUnit>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.MeasurementType);
+            entity.HasIndex(e => e.Category);
         });
 
         // --------------------------------------------------------

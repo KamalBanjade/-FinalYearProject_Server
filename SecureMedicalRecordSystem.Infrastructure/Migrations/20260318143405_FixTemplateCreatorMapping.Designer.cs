@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SecureMedicalRecordSystem.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using SecureMedicalRecordSystem.Infrastructure.Data;
 namespace SecureMedicalRecordSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260318143405_FixTemplateCreatorMapping")]
+    partial class FixTemplateCreatorMapping
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -385,9 +388,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<Guid?>("ParentAppointmentId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uniqueidentifier");
 
@@ -415,8 +415,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.HasIndex("AppointmentDate");
 
                     b.HasIndex("DoctorId");
-
-                    b.HasIndex("ParentAppointmentId");
 
                     b.HasIndex("PatientId");
 
@@ -1316,10 +1314,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<string>("Occupation")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
                     b.Property<Guid?>("PrimaryDoctorId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1386,15 +1380,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<string>("DoctorNotes")
                         .HasMaxLength(5000)
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("FollowUpDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("FollowUpDays")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("FollowUpScheduled")
-                        .HasColumnType("bit");
 
                     b.Property<string>("GeneratedPdfPath")
                         .HasMaxLength(500)
@@ -2061,10 +2046,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("SecureMedicalRecordSystem.Core.Entities.Appointment", "ParentAppointment")
-                        .WithMany()
-                        .HasForeignKey("ParentAppointmentId");
-
                     b.HasOne("SecureMedicalRecordSystem.Core.Entities.Patient", "Patient")
                         .WithMany("Appointments")
                         .HasForeignKey("PatientId")
@@ -2072,8 +2053,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Doctor");
-
-                    b.Navigation("ParentAppointment");
 
                     b.Navigation("Patient");
                 });

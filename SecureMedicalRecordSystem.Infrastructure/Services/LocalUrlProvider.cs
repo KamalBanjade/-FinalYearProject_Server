@@ -9,12 +9,14 @@ namespace SecureMedicalRecordSystem.Infrastructure.Services;
 public class LocalUrlProvider : ILocalUrlProvider
 {
     private readonly Lazy<string> _frontendBaseUrl;
+    private readonly Lazy<string> _frontendIpBaseUrl;
     private readonly Lazy<string> _backendBaseUrl;
     private readonly Lazy<string> _localIpAddress;
     private readonly Lazy<string> _emailConfirmationLinkTemplate;
     private readonly Lazy<string> _passwordResetLinkTemplate;
 
     public string FrontendBaseUrl => _frontendBaseUrl.Value;
+    public string FrontendIpBaseUrl => _frontendIpBaseUrl.Value;
     public string BackendBaseUrl => _backendBaseUrl.Value;
     public string LocalIpAddress => _localIpAddress.Value;
     public string EmailConfirmationLinkTemplate => _emailConfirmationLinkTemplate.Value;
@@ -31,7 +33,18 @@ public class LocalUrlProvider : ILocalUrlProvider
             {
                 return configured.TrimEnd('/');
             }
-            logger.LogInformation("FrontendUrl not explicitly configured. Auto-detecting via local IP: {Ip}", _localIpAddress.Value);
+            logger.LogInformation("FrontendUrl not explicitly configured. Defaulting to localhost:3000");
+            return "http://localhost:3000";
+        });
+
+        _frontendIpBaseUrl = new Lazy<string>(() =>
+        {
+            var configured = configuration["ApplicationUrls:FrontendIpUrl"]; // Optional specific IP override
+            if (!string.IsNullOrWhiteSpace(configured))
+            {
+                return configured.TrimEnd('/');
+            }
+            logger.LogInformation("FrontendIpUrl not explicitly configured. Auto-detecting via local IP: {Ip}", _localIpAddress.Value);
             return $"http://{_localIpAddress.Value}:3000";
         });
 

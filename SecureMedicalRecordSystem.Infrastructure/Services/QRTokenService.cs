@@ -102,11 +102,21 @@ public class QRTokenService : IQRTokenService
 
     private async Task<(string Token, DateTime ExpiresAt)> GenerateTokenInternalAsync(Guid patientId, QRTokenType type, int expiryDays)
     {
-        // 1. Generate cryptographically secure token (256 bits)
+        // 1. Revoke existing active tokens of the same type
+        var existingTokens = await _context.QRTokens
+            .Where(t => t.PatientId == patientId && t.TokenType == type && t.IsActive)
+            .ToListAsync();
+            
+        foreach (var existingToken in existingTokens)
+        {
+            existingToken.IsActive = false;
+        }
+
+        // 2. Generate cryptographically secure token (256 bits)
         var tokenBytes = new byte[32];
         RandomNumberGenerator.Fill(tokenBytes);
         
-        // 2. Convert to URL-safe Base64
+        // 3. Convert to URL-safe Base64
         string token = Convert.ToBase64String(tokenBytes)
             .Replace("+", "-")
             .Replace("/", "_")

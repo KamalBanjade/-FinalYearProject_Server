@@ -70,4 +70,11 @@ public interface IAppointmentService
 
     Task<(bool Success, string Message, List<DoctorSuggestionItem>? Data)> SuggestDoctorsByReasonAsync(
         string reason);
+
+    Task<FollowUpAppointmentResult> ScheduleFollowUpAppointmentAsync(
+        Guid? originalAppointmentId,
+        DateTime preferredDate,
+        Guid doctorId,
+        Guid patientId,
+        int duration);
 }

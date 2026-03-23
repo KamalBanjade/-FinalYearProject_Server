@@ -58,4 +58,8 @@ public class HealthRecordAttributeDTO
 {
     public string Name { get; set; } = string.Empty;
     public string Value { get; set; } = string.Empty;
+    public string? Unit { get; set; }
+    public decimal? NormalRangeMin { get; set; }
+    public decimal? NormalRangeMax { get; set; }
+    public string? FieldType { get; set; } // Represented as string for DTO
 }

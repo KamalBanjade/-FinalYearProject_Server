@@ -7,6 +7,7 @@ using SecureMedicalRecordSystem.Core.DTOs.Appointments;
 using SecureMedicalRecordSystem.Core.DTOs.MedicalRecords;
 using SecureMedicalRecordSystem.Core.Entities;
 using SecureMedicalRecordSystem.Core.Interfaces;
+using SecureMedicalRecordSystem.Infrastructure.Data;
 using System.Security.Claims;
 
 namespace SecureMedicalRecordSystem.API.Controllers;
@@ -17,15 +18,18 @@ namespace SecureMedicalRecordSystem.API.Controllers;
 public class AppointmentsController : ControllerBase
 {
     private readonly IAppointmentService _appointmentService;
+    private readonly ApplicationDbContext _context;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ILogger<AppointmentsController> _logger;
 
     public AppointmentsController(
         IAppointmentService appointmentService,
+        ApplicationDbContext context,
         UserManager<ApplicationUser> userManager,
         ILogger<AppointmentsController> logger)
     {
         _appointmentService = appointmentService;
+        _context = context;
         _userManager = userManager;
         _logger = logger;
     }
@@ -179,5 +183,66 @@ public class AppointmentsController : ControllerBase
             return BadRequest(ApiResponse<List<DoctorSuggestionItem>>.FailureResult(result.Message));
 
         return Ok(ApiResponse<List<DoctorSuggestionItem>>.SuccessResult(result.Data, result.Message));
+    }
+
+    /// <summary>
+    /// Schedule a follow-up appointment after a consultation is saved.
+    /// Called by the doctor from the post-consultation modal.
+    /// </summary>
+    [HttpPost("follow-up")]
+    [Authorize(Policy = "DoctorPolicy")]
+    public async Task<ActionResult<ApiResponse<FollowUpAppointmentResult>>> ScheduleFollowUp(
+        [FromBody] ScheduleFollowUpRequest request)
+    {
+        try
+        {
+            var userId = GetUserId();
+            Guid? doctorId = null;
+            Guid? patientId = request.PatientId;
+            int duration = 30; // Default duration if not from appointment
+
+            if (request.OriginalAppointmentId.HasValue)
+            {
+                // Look up the original appointment — this already enforces that only involved parties can view it
+                var originalResult = await _appointmentService.GetAppointmentByIdAsync(request.OriginalAppointmentId.Value, userId);
+                if (originalResult.Success && originalResult.Data != null)
+                {
+                    doctorId = originalResult.Data.DoctorId;
+                    patientId = originalResult.Data.PatientId;
+                    duration = originalResult.Data.Duration;
+                }
+            }
+
+            // Fallback for doctorId if not found in appointment or if appointment is missing
+            if (!doctorId.HasValue)
+            {
+                // We need to resolve the Doctor entity ID from the Identity User ID
+                var doctor = await _context.Doctors
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.UserId == userId);
+                
+                if (doctor == null)
+                    return BadRequest(ApiResponse<FollowUpAppointmentResult>.FailureResult("Logged in user is not a registered doctor."));
+                
+                doctorId = doctor.Id;
+            }
+
+            if (!patientId.HasValue)
+                return BadRequest(ApiResponse<FollowUpAppointmentResult>.FailureResult("Patient context is missing. Please provide a PatientId."));
+
+            var result = await _appointmentService.ScheduleFollowUpAppointmentAsync(
+                originalAppointmentId: request.OriginalAppointmentId,
+                preferredDate: request.PreferredFollowUpDate,
+                doctorId: doctorId.Value,
+                patientId: patientId.Value,
+                duration: duration);
+
+            return Ok(ApiResponse<FollowUpAppointmentResult>.SuccessResult(result, result.Message ?? "Done"));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error in ScheduleFollowUp endpoint");
+            return StatusCode(500, ApiResponse<FollowUpAppointmentResult>.FailureResult("An error occurred while scheduling the follow-up."));
+        }
     }
 }

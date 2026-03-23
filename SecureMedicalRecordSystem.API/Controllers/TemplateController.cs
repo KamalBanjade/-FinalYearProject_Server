@@ -131,7 +131,7 @@ public class CreateTemplateFromRecordRequest
 public class SuggestTemplateRequest
 {
     public string ChiefComplaint { get; set; } = string.Empty;
-    public Guid PatientId { get; set; }
+    public string? PatientId { get; set; }
 }
 
 public class ForkTemplateRequest

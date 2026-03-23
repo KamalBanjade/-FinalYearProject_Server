@@ -14,7 +14,7 @@ public class Template : BaseEntity
 
     // Origin Tracking
     [Required]
-    public Guid CreatedBy { get; set; }
+    public Guid CreatorId { get; set; }
 
     public Guid? CreatedFromRecordId { get; set; }
     public Guid? BasedOnTemplateId { get; set; }

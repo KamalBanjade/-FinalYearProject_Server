@@ -17,4 +17,5 @@ public interface IEmailService
     Task<bool> SendAppointmentRescheduledEmailAsync(string toEmail, Appointment appointment);
     Task<bool> SendAppointmentReminderEmailAsync(string toEmail, Appointment appointment);
     Task<bool> SendDoctorNewAppointmentNotificationAsync(string toEmail, Appointment appointment);
+    Task SendFollowUpConfirmationAsync(string patientEmail, string patientName, string doctorName, DateTime followUpDate, int durationMinutes, Guid appointmentId);
 }

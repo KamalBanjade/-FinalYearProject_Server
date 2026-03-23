@@ -8,4 +8,5 @@ public class UpdatePatientProfileDTO
     public string? EmergencyContactPhone { get; set; }
     public string? Allergies { get; set; }
     public string? ChronicConditions { get; set; }
+    public string? Occupation { get; set; }
 }

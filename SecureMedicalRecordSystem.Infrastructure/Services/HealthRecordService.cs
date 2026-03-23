@@ -2,6 +2,8 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using Serilog;
 using SecureMedicalRecordSystem.Core.DTOs.HealthRecords;
 using SecureMedicalRecordSystem.Core.Entities;
 using SecureMedicalRecordSystem.Core.Enums;
@@ -27,6 +29,7 @@ public class HealthRecordService : IHealthRecordService
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly ITigrisStorageService _storageService;
     private readonly IEncryptionService _encryptionService;
+    private readonly IServiceScopeFactory _serviceScopeFactory;
 
     public HealthRecordService(
         ApplicationDbContext context,
@@ -35,7 +38,8 @@ public class HealthRecordService : IHealthRecordService
         ILogger<HealthRecordService> logger,
         UserManager<ApplicationUser> userManager,
         ITigrisStorageService storageService,
-        IEncryptionService encryptionService)
+        IEncryptionService encryptionService,
+        IServiceScopeFactory serviceScopeFactory)
     {
         _context = context;
         _templateService = templateService;
@@ -44,6 +48,7 @@ public class HealthRecordService : IHealthRecordService
         _userManager = userManager;
         _storageService = storageService;
         _encryptionService = encryptionService;
+        _serviceScopeFactory = serviceScopeFactory;
     }
 
     public async Task<(bool Success, string Message, HealthRecordDTO? Data)> CreateStructuredRecordAsync(
@@ -54,6 +59,7 @@ public class HealthRecordService : IHealthRecordService
             // 1. Validate doctor authorization:
             var doctor = await _context.Doctors
                 .Include(d => d.User)
+                .Include(d => d.Department)
                 .FirstOrDefaultAsync(d => d.UserId == doctorId);
             
             if (doctor == null)
@@ -73,7 +79,7 @@ public class HealthRecordService : IHealthRecordService
                 PatientId = request.PatientId,
                 DoctorId = doctor.Id,
                 AppointmentId = request.AppointmentId,
-                RecordDate = request.RecordDate ?? DateTime.UtcNow,
+                RecordDate = request.RecordDate ?? DateTime.Now,
                 RecordType = request.RecordType,
                 
                 // Base vitals from nested DTO
@@ -97,7 +103,7 @@ public class HealthRecordService : IHealthRecordService
                 
                 // Metadata
                 IsStructured = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.Now
             };
 
             // 4. Calculate BMI if height and weight provided:
@@ -121,7 +127,7 @@ public class HealthRecordService : IHealthRecordService
                     {
                         record.TemplateSnapshot = template.TemplateSchema;
                         template.UsageCount++;
-                        template.LastUsedAt = DateTime.UtcNow;
+                        template.LastUsedAt = DateTime.Now;
                     }
                 }
 
@@ -135,10 +141,15 @@ public class HealthRecordService : IHealthRecordService
                             RecordId = record.Id,
                             SectionName = section.SectionName,
                             FieldName = attr.Name,
-                            FieldLabel = attr.Name, // We'll use name as label for now
+                            FieldLabel = string.IsNullOrWhiteSpace(attr.Name) ? "" : 
+                                System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(attr.Name.Replace("_", " ")), 
                             FieldValue = attr.Value ?? "",
+                            FieldUnit = attr.Unit,
+                            NormalRangeMin = attr.NormalRangeMin,
+                            NormalRangeMax = attr.NormalRangeMax,
+                            FieldType = Enum.TryParse<FieldType>(attr.FieldType, true, out var type) ? type : FieldType.Text,
                             IsFromTemplate = request.TemplateId.HasValue,
-                            CreatedAt = DateTime.UtcNow,
+                            CreatedAt = DateTime.Now,
                             AddedBy = doctorId
                         };
                         
@@ -158,17 +169,33 @@ public class HealthRecordService : IHealthRecordService
                 "0.0.0.0",
                 "Service");
 
-            // 10. Generate PDF, Upload to Tigris, and link as MedicalRecord (Pre-verified)
-            try
+            // 10. Generate PDF, Upload to Tigris (Background Task)
+            var recordId = record.Id;
+            var scopeFactory = _serviceScopeFactory;
+            _ = Task.Run(async () =>
             {
-                var pdfUrl = await GeneratePdfReportInternalAsync(record);
-                record.GeneratedPdfPath = pdfUrl;
-                await _context.SaveChangesAsync();
-            }
-            catch (Exception pdfEx)
-            {
-                _logger.LogWarning(pdfEx, "Health record saved, but PDF automated generation failed.");
-            }
+                try
+                {
+                    using var scope = scopeFactory.CreateScope();
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+                    var scopedHealthService = scope.ServiceProvider.GetRequiredService<IHealthRecordService>();
+                    
+                    // Generate PDF (Internal already saves MedicalRecord link)
+                    var pdfUrl = await scopedHealthService.GeneratePdfReportAsync(recordId);
+                    
+                    // Also update the original record's GeneratedPdfPath
+                    var scopedRecord = await scopedContext.PatientHealthRecords.FindAsync(recordId);
+                    if (scopedRecord != null)
+                    {
+                        scopedRecord.GeneratedPdfPath = pdfUrl;
+                        await scopedContext.SaveChangesAsync();
+                    }
+                }
+                catch (Exception pdfEx)
+                {
+                    Log.Error(pdfEx, "Background PDF generation failed for record {Id}", recordId);
+                }
+            });
 
             // 11. Return DTO:
             var dto = await MapToDTO(record);
@@ -179,6 +206,115 @@ public class HealthRecordService : IHealthRecordService
             _logger.LogError(ex, "Failed to create structured record");
             return (false, "An error occurred while creating the record", null);
         }
+    }
+
+    public async Task<VisitContextDTO> GetVisitContextAsync(Guid patientId)
+    {
+        var previousRecords = await _context.PatientHealthRecords
+            .Include(r => r.CustomAttributes)
+            .Where(r => r.PatientId == patientId)
+            .OrderByDescending(r => r.CreatedAt)
+            .Take(10) // Look back further for historical values
+            .ToListAsync();
+
+        if (!previousRecords.Any())
+        {
+            return new VisitContextDTO
+            {
+                Type = VisitType.FirstVisit,
+                PrePopulateVitals = false,
+                PrePopulateProtocol = false
+            };
+        }
+
+        var lastVisit = previousRecords.First();
+        var daysSinceLastVisit = (DateTime.Now - lastVisit.CreatedAt).Days;
+        
+        var context = new VisitContextDTO
+        {
+            DaysSinceLastVisit = daysSinceLastVisit,
+            LastDiagnosis = lastVisit.Diagnosis,
+            PreviousRecord = await MapToDTO(lastVisit)
+        };
+
+        // Determine Visit Type
+        if (daysSinceLastVisit <= 90)
+            context.Type = VisitType.FollowUp;
+        else if (daysSinceLastVisit <= 365)
+            context.Type = VisitType.RoutineCheckup;
+        else
+            context.Type = VisitType.LongGapVisit;
+
+        // Logic for Pre-population
+        context.PrePopulateVitals = context.Type != VisitType.LongGapVisit;
+        context.PrePopulateProtocol = context.Type == VisitType.FollowUp;
+
+        // Build Vitals Comparison
+        context.VitalsComparison = new VitalsComparisonDTO
+        {
+            LastVisit = new VitalSignsDTO
+            {
+                BloodPressureSystolic = lastVisit.BloodPressureSystolic,
+                BloodPressureDiastolic = lastVisit.BloodPressureDiastolic,
+                HeartRate = lastVisit.HeartRate,
+                Temperature = lastVisit.Temperature,
+                Weight = lastVisit.Weight,
+                Height = lastVisit.Height,
+                SpO2 = (int?)lastVisit.SpO2,
+                RecordedAt = lastVisit.CreatedAt
+            },
+            LockedFields = new List<string> { "Height" } 
+        };
+
+        if (context.PrePopulateVitals)
+        {
+            context.VitalsComparison.Suggested = context.VitalsComparison.LastVisit;
+        }
+
+        // Protocol Pre-population (Aggregated History)
+        if (context.PrePopulateProtocol)
+        {
+            // Use the structure of the last visit but values from the most recent non-empty record per field
+            context.ProtocolToLoad = new ProtocolDTO
+            {
+                TemplateName = lastVisit.TemplateSnapshot != null ? "Last Visit Structure" : "Manual Observations",
+                Sections = lastVisit.CustomAttributes
+                    .GroupBy(a => a.SectionName ?? "General")
+                    .Select(g => new ProtocolSectionDTO
+                    {
+                        SectionName = g.Key,
+                        Fields = g.Select(a => {
+                            // Find the most recent non-empty value for this specific field across all pulled history
+                            var lastKnownValue = a.FieldValue;
+                            if (string.IsNullOrWhiteSpace(lastKnownValue) || lastKnownValue == "—" || lastKnownValue == "--")
+                            {
+                                foreach (var prev in previousRecords.Skip(1))
+                                {
+                                    var historicAttr = prev.CustomAttributes.FirstOrDefault(ha => ha.FieldName == a.FieldName);
+                                    if (historicAttr != null && !string.IsNullOrWhiteSpace(historicAttr.FieldValue) 
+                                        && historicAttr.FieldValue != "—" && historicAttr.FieldValue != "--")
+                                    {
+                                        lastKnownValue = historicAttr.FieldValue;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            return new ProtocolFieldDTO
+                            {
+                                FieldName = a.FieldName,
+                                LastValue = lastKnownValue,
+                                Unit = a.FieldUnit,
+                                NormalRange = (a.NormalRangeMin.HasValue && a.NormalRangeMax.HasValue) 
+                                    ? $"{a.NormalRangeMin}-{a.NormalRangeMax}" : null,
+                                FieldType = a.FieldType.ToString()
+                            };
+                        }).ToList()
+                    }).ToList()
+            };
+        }
+
+        return context;
     }
 
     private async Task<HealthRecordDTO> MapToDTO(PatientHealthRecord record)
@@ -384,6 +520,7 @@ public class HealthRecordService : IHealthRecordService
         var record = await _context.PatientHealthRecords
             .Include(r => r.Patient).ThenInclude(p => p.User)
             .Include(r => r.Doctor).ThenInclude(d => d.User)
+            .Include(r => r.Doctor).ThenInclude(d => d.Department)
             .Include(r => r.CustomAttributes)
             .FirstOrDefaultAsync(r => r.Id == recordId);
             
@@ -394,12 +531,28 @@ public class HealthRecordService : IHealthRecordService
     
     private async Task<string> GeneratePdfReportInternalAsync(PatientHealthRecord record)
     {
-        // Explicitly load all attributes for this record directly from the database context
+        // Explicitly load all attributes and doctor data including department
         var customAttributes = await _context.HealthAttributes
             .Where(a => a.RecordId == record.Id)
+            .OrderBy(a => a.DisplayOrder)
             .ToListAsync();
             
         record.CustomAttributes = customAttributes;
+
+        // Force reload Doctor and Department to ensure they are available for PDF
+        if (record.Doctor == null || record.Doctor.Department == null)
+        {
+            var doctorWithDept = await _context.Doctors
+                .Include(d => d.User)
+                .Include(d => d.Department)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => d.Id == record.DoctorId);
+                
+            if (doctorWithDept != null)
+            {
+                record.Doctor = doctorWithDept;
+            }
+        }
 
         // Brand Palette
         DeviceRgb brandPrimary = new DeviceRgb(0, 59, 115); // #003B73
@@ -470,10 +623,13 @@ public class HealthRecordService : IHealthRecordService
         infoTable.AddCell(patientCard);
 
         // Doctor Card
+        var deptName = record.Doctor?.Department?.Name;
+        if (string.IsNullOrWhiteSpace(deptName)) deptName = "General Practice";
+
         var doctorCard = new Cell()
             .Add(new Paragraph("ATTENDING PHYSICIAN").SetBold().SetFontColor(brandPrimary).SetFontSize(11))
             .Add(new Paragraph($"Dr. {record.Doctor?.User?.FirstName} {record.Doctor?.User?.LastName}").SetFontSize(10))
-            .Add(new Paragraph($"Dept: {record.Doctor?.Department}").SetFontSize(10))
+            .Add(new Paragraph($"Dept: {deptName}").SetFontSize(10))
             .SetPadding(10)
             .SetBackgroundColor(new DeviceRgb(241, 245, 249))
             .SetBorder(Border.NO_BORDER);
@@ -522,9 +678,9 @@ public class HealthRecordService : IHealthRecordService
                 var attrTable = new Table(new float[] { 2, 2, 1 }).UseAllAvailableWidth();
                 attrTable.SetMarginBottom(10);
 
-                var headerCell1 = new Cell().Add(new Paragraph("Field").SetBold().SetFontColor(ColorConstants.WHITE)).SetBackgroundColor(brandPrimary);
-                var headerCell2 = new Cell().Add(new Paragraph("Value").SetBold().SetFontColor(ColorConstants.WHITE)).SetBackgroundColor(brandPrimary);
-                var headerCell3 = new Cell().Add(new Paragraph("Range / Flag").SetBold().SetFontColor(ColorConstants.WHITE)).SetBackgroundColor(brandPrimary);
+                var headerCell1 = new Cell().Add(new Paragraph("Measurement Field").SetBold().SetFontColor(ColorConstants.WHITE)).SetBackgroundColor(brandPrimary);
+                var headerCell2 = new Cell().Add(new Paragraph("Result").SetBold().SetFontColor(ColorConstants.WHITE)).SetBackgroundColor(brandPrimary);
+                var headerCell3 = new Cell().Add(new Paragraph("Reference Range & Status").SetBold().SetFontColor(ColorConstants.WHITE)).SetBackgroundColor(brandPrimary);
                 
                 attrTable.AddHeaderCell(headerCell1);
                 attrTable.AddHeaderCell(headerCell2);
@@ -532,25 +688,62 @@ public class HealthRecordService : IHealthRecordService
 
                 foreach (var attr in section.OrderBy(a => a.DisplayOrder))
                 {
-                    attrTable.AddCell(new Cell().Add(new Paragraph(attr.FieldLabel ?? attr.FieldName).SetFontSize(9)));
-                    attrTable.AddCell(new Cell().Add(new Paragraph($"{attr.FieldValue} {attr.FieldUnit}").SetFontSize(9)));
+                    // Skip unmeasured fields (Defensive check)
+                    var val = attr.FieldValue?.Trim();
+                    if (string.IsNullOrWhiteSpace(val) || val == "—" || val == "--" || val == "null" || val == "undefined")
+                        continue;
+
+                    // Ensure labels are readable
+                    var label = attr.FieldLabel?.Trim() ?? attr.FieldName?.Trim() ?? "Unknown Field";
+                    if (label.Contains("_"))
+                    {
+                        label = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(label.Replace("_", " ").ToLower());
+                    }
+                    else if (label.All(char.IsUpper)) // Handle ALL CAPS from templates
+                    {
+                        label = System.Globalization.CultureInfo.CurrentCulture.TextInfo.ToTitleCase(label.ToLower());
+                    }
+                    
+                    var unitText = string.IsNullOrWhiteSpace(attr.FieldUnit) ? "" : $" {attr.FieldUnit}";
+                    attrTable.AddCell(new Cell().Add(new Paragraph(label).SetFontSize(9)));
+                    attrTable.AddCell(new Cell().Add(new Paragraph($"{val}{unitText}").SetFontSize(9)));
                     
                     var flagStr = "";
                     if (attr.NormalRangeMin.HasValue && attr.NormalRangeMax.HasValue)
                     {
-                        flagStr = $"[{attr.NormalRangeMin} - {attr.NormalRangeMax}]";
-                        if (attr.IsAbnormal == true) flagStr += " (!)";
+                        var status = "Normal";
+                        if (decimal.TryParse(val, out var numericVal))
+                        {
+                            if (numericVal < attr.NormalRangeMin.Value) status = "Low";
+                            else if (numericVal > attr.NormalRangeMax.Value) status = "High";
+                        }
+                        else if (attr.IsAbnormal == true) 
+                        {
+                            status = "Abnormal";
+                        }
+                        
+                        flagStr = $"({attr.NormalRangeMin} - {attr.NormalRangeMax})({status})";
                     }
                     else if (attr.IsAbnormal == true)
                     {
-                        flagStr = "(!)";
+                        flagStr = "(Abnormal)";
                     }
                     
-                    var flagCell = new Cell().Add(new Paragraph(flagStr).SetFontSize(9));
-                    if (attr.IsAbnormal == true) flagCell.SetFontColor(ColorConstants.RED).SetBold();
+                    var flagCell = new Cell().Add(new Paragraph(string.IsNullOrEmpty(flagStr) ? "Normal" : flagStr).SetFontSize(9));
+                    if (attr.IsAbnormal == true || flagStr.Contains("High") || flagStr.Contains("Low") || flagStr.Contains("Abnormal")) 
+                        flagCell.SetFontColor(ColorConstants.RED).SetBold();
                     attrTable.AddCell(flagCell);
                 }
-                document.Add(attrTable);
+                
+                // Only add table if it has rows
+                if (attrTable.GetNumberOfRows() > 1) // Excluding header
+                {
+                    document.Add(attrTable);
+                }
+                else
+                {
+                    document.Add(new Paragraph("None reported.").SetFontSize(8).SetItalic().SetFontColor(ColorConstants.GRAY));
+                }
             }
         }
 
@@ -621,8 +814,8 @@ public class HealthRecordService : IHealthRecordService
             RecordType = "Clinical Report (Auto-Generated)",
             Description = $"Structured session generated report for {record.ChiefComplaint ?? record.RecordType}",
             RecordDate = record.RecordDate,
-            UploadedAt = DateTime.UtcNow,
-            CertifiedAt = DateTime.UtcNow
+            UploadedAt = DateTime.Now,
+            CertifiedAt = DateTime.Now
         };
 
         await _context.MedicalRecords.AddAsync(medRecord);
@@ -668,7 +861,7 @@ public class HealthRecordService : IHealthRecordService
         {
             ["export_metadata"] = new
             {
-                export_date = DateTime.UtcNow,
+                export_date = DateTime.Now,
                 patient_id = patientId,
                 patient_age = CalculateAge(patient.DateOfBirth),
                 patient_gender = patient.Gender,

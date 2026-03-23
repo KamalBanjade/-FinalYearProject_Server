@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SecureMedicalRecordSystem.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using SecureMedicalRecordSystem.Infrastructure.Data;
 namespace SecureMedicalRecordSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260317160411_AddCommonLabUnits")]
+    partial class AddCommonLabUnits
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -385,9 +388,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<Guid?>("ParentAppointmentId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<Guid>("PatientId")
                         .HasColumnType("uniqueidentifier");
 
@@ -415,8 +415,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.HasIndex("AppointmentDate");
 
                     b.HasIndex("DoctorId");
-
-                    b.HasIndex("ParentAppointmentId");
 
                     b.HasIndex("PatientId");
 
@@ -1316,10 +1314,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("nvarchar(20)");
 
-                    b.Property<string>("Occupation")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
-
                     b.Property<Guid?>("PrimaryDoctorId")
                         .HasColumnType("uniqueidentifier");
 
@@ -1386,15 +1380,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<string>("DoctorNotes")
                         .HasMaxLength(5000)
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("FollowUpDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("FollowUpDays")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("FollowUpScheduled")
-                        .HasColumnType("bit");
 
                     b.Property<string>("GeneratedPdfPath")
                         .HasMaxLength(500)
@@ -1722,14 +1707,10 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("CreatedBy")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("CreatedFromRecordId")
+                    b.Property<Guid>("CreatedBy")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("CreatorId")
+                    b.Property<Guid?>("CreatedFromRecordId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("DepartmentId")
@@ -1780,9 +1761,9 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
 
                     b.HasIndex("BasedOnTemplateId");
 
-                    b.HasIndex("CreatedFromRecordId");
+                    b.HasIndex("CreatedBy");
 
-                    b.HasIndex("CreatorId");
+                    b.HasIndex("CreatedFromRecordId");
 
                     b.HasIndex("DepartmentId");
 
@@ -1790,7 +1771,7 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
 
                     b.HasIndex("Visibility");
 
-                    b.HasIndex("CreatorId", "TemplateName")
+                    b.HasIndex("CreatedBy", "TemplateName")
                         .IsUnique();
 
                     b.ToTable("Templates");
@@ -2061,10 +2042,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("SecureMedicalRecordSystem.Core.Entities.Appointment", "ParentAppointment")
-                        .WithMany()
-                        .HasForeignKey("ParentAppointmentId");
-
                     b.HasOne("SecureMedicalRecordSystem.Core.Entities.Patient", "Patient")
                         .WithMany("Appointments")
                         .HasForeignKey("PatientId")
@@ -2072,8 +2049,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Doctor");
-
-                    b.Navigation("ParentAppointment");
 
                     b.Navigation("Patient");
                 });
@@ -2328,16 +2303,16 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
                         .HasForeignKey("BasedOnTemplateId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("SecureMedicalRecordSystem.Core.Entities.ApplicationUser", "Creator")
+                        .WithMany()
+                        .HasForeignKey("CreatedBy")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
                     b.HasOne("SecureMedicalRecordSystem.Core.Entities.PatientHealthRecord", "SourceRecord")
                         .WithMany()
                         .HasForeignKey("CreatedFromRecordId")
                         .OnDelete(DeleteBehavior.Restrict);
-
-                    b.HasOne("SecureMedicalRecordSystem.Core.Entities.ApplicationUser", "Creator")
-                        .WithMany()
-                        .HasForeignKey("CreatorId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
 
                     b.HasOne("SecureMedicalRecordSystem.Core.Entities.Department", "Department")
                         .WithMany()

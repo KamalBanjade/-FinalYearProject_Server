@@ -31,7 +31,7 @@ public class TemplateService : ITemplateService
 
             // Check for duplicate name for this doctor
             var existing = await _context.Templates
-                .FirstOrDefaultAsync(t => t.CreatedBy == creatorId && t.TemplateName == request.TemplateName && t.IsActive);
+                .FirstOrDefaultAsync(t => t.CreatorId == creatorId && t.TemplateName == request.TemplateName && t.IsActive);
             if (existing != null)
                 return (false, "You already have a template with this name", null);
 
@@ -44,7 +44,8 @@ public class TemplateService : ITemplateService
                 Id = Guid.NewGuid(),
                 TemplateName = request.TemplateName,
                 Description = request.Description,
-                CreatedBy = creatorId,
+                CreatedBy = creatorId.ToString(), // Auditing (string)
+                CreatorId = creatorId, // Functional ID (Guid)
                 Visibility = request.Visibility,
                 DepartmentId = doctor.DepartmentId,
                 TemplateSchema = schemaJson,
@@ -96,7 +97,7 @@ public class TemplateService : ITemplateService
             if (doctor == null) return (false, "Not authorized", null);
 
             var existingTemplateForDoctor = await _context.Templates
-                .FirstOrDefaultAsync(t => t.CreatedBy == doctor.UserId && t.TemplateName == templateName);
+                .FirstOrDefaultAsync(t => t.CreatorId == doctor.UserId && t.TemplateName == templateName);
                 
             if (existingTemplateForDoctor != null)
                 return (false, "You already have a template with this name", null);
@@ -139,7 +140,8 @@ public class TemplateService : ITemplateService
                 Id = Guid.NewGuid(),
                 TemplateName = templateName,
                 Description = description,
-                CreatedBy = doctor.UserId,
+                CreatedBy = doctor.UserId.ToString(),
+                CreatorId = doctor.UserId,
                 CreatedFromRecordId = recordId,
                 Visibility = visibility,
                 DepartmentId = doctor.DepartmentId,
@@ -184,7 +186,7 @@ public class TemplateService : ITemplateService
             var template = await _context.Templates.FindAsync(templateId);
             if (template == null) return (false, "Template not found", null);
 
-            if (template.CreatedBy != modifierId) return (false, "Only the creator can modify this template", null);
+            if (template.CreatorId != modifierId) return (false, "Only the creator can modify this template", null);
 
             var oldSchema = template.TemplateSchema;
             bool schemaChanged = false;
@@ -247,13 +249,13 @@ public class TemplateService : ITemplateService
             if (includeShared)
             {
                 query = query.Where(t => 
-                    t.CreatedBy == doctorId || 
+                    t.CreatorId == doctorId || 
                     (t.Visibility == VisibilityLevel.Department && t.DepartmentId == doctor.DepartmentId) || 
                     t.Visibility == VisibilityLevel.Hospital);
             }
             else
             {
-                query = query.Where(t => t.CreatedBy == doctorId);
+                query = query.Where(t => t.CreatorId == doctorId);
             }
 
             var templates = await query.Where(t => t.IsActive).ToListAsync();
@@ -266,17 +268,86 @@ public class TemplateService : ITemplateService
         }
     }
 
-    public Task<(bool Success, string Message, List<TemplateDTO>? Data)> SuggestTemplatesAsync(string chiefComplaint, Guid doctorId)
+    public async Task<(bool Success, string Message, List<TemplateDTO>? Data)> SuggestTemplatesAsync(string chiefComplaint, Guid doctorId)
     {
-        // Simple mock algorithm based on text matching. In future this can integrate an actual AI endpoint
-        return GetDoctorTemplatesAsync(doctorId, true);
+        try
+        {
+            var doctor = await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == doctorId);
+            if (doctor == null) return (false, "Doctor not found", null);
+
+            var query = _context.Templates.AsQueryable()
+                .Where(t => t.IsActive && (
+                    t.CreatorId == doctorId || 
+                    (t.Visibility == VisibilityLevel.Department && t.DepartmentId == doctor.DepartmentId) || 
+                    t.Visibility == VisibilityLevel.Hospital));
+
+            var allTemplates = await query.ToListAsync();
+            
+            if (string.IsNullOrWhiteSpace(chiefComplaint))
+            {
+                // Return top used templates if no complaint
+                return (true, "Recent templates suggested", 
+                    allTemplates.OrderByDescending(t => t.UsageCount).Take(5).Select(MapToDTO).ToList());
+            }
+
+            var complaintWords = chiefComplaint.ToLower().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            
+            var matched = allTemplates
+                .Select(t => new { 
+                    Template = t, 
+                    Score = CalculateMatchScore(t, complaintWords) 
+                })
+                .Where(x => x.Score > 0)
+                .OrderByDescending(x => x.Score)
+                .ThenByDescending(x => x.Template.UsageCount)
+                .Take(5)
+                .Select(x => x.Template)
+                .ToList();
+
+            // Always fill up to 5 suggestions if possible
+            var result = new List<Template>(matched);
+            if (result.Count < 5)
+            {
+                var extra = allTemplates
+                    .Where(t => result.All(r => r.Id != t.Id))
+                    .OrderByDescending(t => t.UsageCount)
+                    .Take(5 - result.Count)
+                    .ToList();
+                result.AddRange(extra);
+            }
+
+            return (true, "Smart suggestions generated", result.Select(MapToDTO).ToList());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error suggesting templates");
+            return (false, "Error suggesting templates", null);
+        }
+    }
+
+    private int CalculateMatchScore(Template t, string[] queryWords)
+    {
+        int score = 0;
+        var nameLower = t.TemplateName.ToLower();
+        var descLower = (t.Description ?? "").ToLower();
+
+        foreach (var word in queryWords)
+        {
+            if (nameLower.Contains(word)) score += 10;
+            if (descLower.Contains(word)) score += 2;
+        }
+
+        // Exact name match bonus
+        if (queryWords.Any(w => nameLower == w)) score += 20;
+
+        return score;
     }
 
     public async Task<(bool Success, string Message)> DeleteTemplateAsync(Guid templateId, Guid doctorId)
     {
         var template = await _context.Templates.FindAsync(templateId);
         if (template == null) return (false, "Template not found");
-        if (template.CreatedBy != doctorId) return (false, "Only creator can delete");
+        if (template.CreatorId != doctorId) return (false, "Only creator can delete");
 
         template.IsActive = false;
         await _context.SaveChangesAsync();
@@ -293,7 +364,7 @@ public class TemplateService : ITemplateService
         var sourceTemplate = await _context.Templates.FindAsync(sourceTemplateId);
         if (sourceTemplate == null) return (false, "Source not found", null);
 
-        var existing = await _context.Templates.FirstOrDefaultAsync(t => t.CreatedBy == doctorId && t.TemplateName == newTemplateName);
+        var existing = await _context.Templates.FirstOrDefaultAsync(t => t.CreatorId == doctorId && t.TemplateName == newTemplateName);
         if (existing != null) return (false, "Name already exists", null);
 
         var newTemplate = new Template
@@ -301,7 +372,8 @@ public class TemplateService : ITemplateService
             Id = Guid.NewGuid(),
             TemplateName = newTemplateName,
             Description = $"Forked from {sourceTemplate.TemplateName}",
-            CreatedBy = doctorId,
+            CreatedBy = doctorId.ToString(),
+            CreatorId = doctorId,
             BasedOnTemplateId = sourceTemplateId,
             Visibility = VisibilityLevel.Private,
             DepartmentId = doctor.DepartmentId,
@@ -328,7 +400,7 @@ public class TemplateService : ITemplateService
             if (template == null || !template.IsActive) return (false, "Template not found", null);
 
             // Access check: own, same department, or hospital-wide
-            bool hasAccess = template.CreatedBy == doctorId
+            bool hasAccess = template.CreatorId == doctorId
                 || template.Visibility == VisibilityLevel.Hospital
                 || (template.Visibility == VisibilityLevel.Department && doctor != null && template.DepartmentId == doctor.DepartmentId);
 
@@ -360,7 +432,7 @@ public class TemplateService : ITemplateService
             Id = t.Id,
             TemplateName = t.TemplateName,
             Description = t.Description,
-            CreatedBy = t.CreatedBy,
+            CreatedBy = t.CreatorId,
             CreatedFromRecordId = t.CreatedFromRecordId,
             BasedOnTemplateId = t.BasedOnTemplateId,
             Visibility = t.Visibility,

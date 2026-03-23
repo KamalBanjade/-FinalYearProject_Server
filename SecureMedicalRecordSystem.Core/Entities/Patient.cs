@@ -39,6 +39,9 @@ public class Patient : BaseEntity
 
     public string? Address { get; set; }
 
+    [MaxLength(100)]
+    public string? Occupation { get; set; }
+
     // Primary Doctor (for smart suggestions) 
     public Guid? PrimaryDoctorId { get; set; }
     public Doctor? PrimaryDoctor { get; set; }

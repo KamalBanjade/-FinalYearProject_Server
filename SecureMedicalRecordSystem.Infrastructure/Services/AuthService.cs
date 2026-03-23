@@ -134,10 +134,10 @@ public class AuthService : IAuthService
 
             // 7. Generate Medical Access Token
             var (accessToken, expiresAt) = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
-            var frontendUrl = _urlProvider.FrontendBaseUrl;
+            var frontendUrl = _urlProvider.FrontendIpBaseUrl;
             var accessUrl = $"{frontendUrl}/access/{accessToken}";
 
-            // 8. Generate Confirmation Token
+            // 8. Generate Confirmation Token and Send Background Email
             var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
             var template = _urlProvider.EmailConfirmationLinkTemplate;
             
@@ -148,7 +148,13 @@ public class AuthService : IAuthService
             Log.Information("Email Template: {Template}", template);
             Log.Information("Verification Link generated for {Email}: {Link}", user.Email, confirmationLink);
             
-            await _emailService.SendEmailConfirmationAsync(user.Email!, confirmationLink);
+            // Fire-and-forget: return instantly, emails go out in background
+            var emailAddr = user.Email!;
+            _ = Task.Run(async () =>
+            {
+                try { await _emailService.SendEmailConfirmationAsync(emailAddr, confirmationLink); }
+                catch (Exception ex) { Log.Error(ex, "Background registration email failed for {Email}", emailAddr); }
+            });
 
             // 9. Log Action
             await _auditLogService.LogAsync(user.Id, "Patient Registration", "Registered as Patient with mandatory 2FA", "N/A", "System");
@@ -280,12 +286,17 @@ public class AuthService : IAuthService
                 .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(resetToken))
                 .Replace("[USERID]", user.Id.ToString());
 
-            // 11. Send Invitation Email
-            var emailSent = await _emailService.SendDoctorInvitationEmailAsync(
-                user.Email!, 
-                $"{user.FirstName} {user.LastName}", 
-                tempPassword, 
-                resetLink);
+            // 11. Send Invitation Email (Background)
+            var emailAddr = user.Email!;
+            var fullName = $"{user.FirstName} {user.LastName}";
+            _ = Task.Run(async () =>
+            {
+                try 
+                { 
+                    await _emailService.SendDoctorInvitationEmailAsync(emailAddr, fullName, tempPassword, resetLink); 
+                }
+                catch (Exception ex) { Log.Error(ex, "Background doctor invitation email failed for {Email}", emailAddr); }
+            });
 
             // 11. Log Action
             await _auditLogService.LogAsync(adminUserId, "Doctor Invited", $"Invited doctor {request.Email}", "N/A", "System");
@@ -295,10 +306,8 @@ public class AuthService : IAuthService
                 DoctorId = user.Id,
                 Email = user.Email!,
                 TemporaryPassword = tempPassword,
-                InvitationSent = emailSent,
-                Message = emailSent 
-                    ? "Invitation email sent to the doctor." 
-                    : "Doctor account created, but email failed to send. Please share credentials manually."
+                InvitationSent = true,
+                Message = "Doctor account created successfully. Invitation email will be delivered shortly."
             });
         }
         catch (Exception ex)
@@ -377,7 +386,7 @@ public class AuthService : IAuthService
                     var tokenResult = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
                     accessToken = tokenResult.Token;
                     expiresAt = tokenResult.ExpiresAt;
-                    var frontendUrl = _urlProvider.FrontendBaseUrl;
+                    var frontendUrl = _urlProvider.FrontendIpBaseUrl;
                     accessUrl = $"{frontendUrl}/access/{accessToken}";
                 }
 
@@ -544,7 +553,12 @@ public class AuthService : IAuthService
             .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(token))
             .Replace("[USERID]", user.Id.ToString());
         
-        await _emailService.SendEmailConfirmationAsync(user.Email!, confirmationLink);
+        var emailAddr = user.Email!;
+        _ = Task.Run(async () =>
+        {
+            try { await _emailService.SendEmailConfirmationAsync(emailAddr, confirmationLink); }
+            catch (Exception ex) { Log.Error(ex, "Background verification resend failed for {Email}", emailAddr); }
+        });
         await _auditLogService.LogAsync(user.Id, "Resend Verification", "Verification email resent", "N/A", "System");
 
         return (true, "Verification email sent successfully.");
@@ -582,7 +596,12 @@ public class AuthService : IAuthService
             .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(token))
             .Replace("[USERID]", user.Id.ToString());
 
-        await _emailService.SendPasswordResetEmailAsync(email, resetLink);
+        var emailAddr = email;
+        _ = Task.Run(async () =>
+        {
+            try { await _emailService.SendPasswordResetEmailAsync(emailAddr, resetLink); }
+            catch (Exception ex) { Log.Error(ex, "Background forgot password email failed for {Email}", emailAddr); }
+        });
         await _auditLogService.LogAsync(user.Id, "Forgot Password", "Password reset requested", "N/A", "System");
 
         return (true, "If your email exists in our system, you will receive a password reset link shortly.");
@@ -696,7 +715,7 @@ public class AuthService : IAuthService
             var tokenResult = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
             accessToken = tokenResult.Token;
             expiresAt = tokenResult.ExpiresAt;
-            var frontendUrl = _urlProvider.FrontendBaseUrl;
+            var frontendUrl = _urlProvider.FrontendIpBaseUrl;
             accessUrl = $"{frontendUrl}/access/{accessToken}";
         }
 

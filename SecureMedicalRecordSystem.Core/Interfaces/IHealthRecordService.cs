@@ -42,4 +42,6 @@ public interface IHealthRecordService
         Guid patientId,
         DateTime? startDate = null,
         DateTime? endDate = null);
+
+    Task<VisitContextDTO> GetVisitContextAsync(Guid patientId);
 }

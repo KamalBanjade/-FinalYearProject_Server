@@ -69,8 +69,10 @@ public class PatientController : ControllerBase
             patient.Gender,
             patient.BloodType,
             patient.Address,
+            patient.Occupation,
             patient.EmergencyContactName,
             patient.EmergencyContactPhone,
+            patient.EmergencyContactRelationship,
             patient.Allergies,
             patient.ChronicConditions
         };
@@ -93,6 +95,7 @@ public class PatientController : ControllerBase
         try {
             if (!string.IsNullOrEmpty(updateDto.BloodType)) patient.BloodType = updateDto.BloodType;
             if (!string.IsNullOrEmpty(updateDto.Address)) patient.Address = updateDto.Address;
+            if (!string.IsNullOrEmpty(updateDto.Occupation)) patient.Occupation = updateDto.Occupation;
             if (!string.IsNullOrEmpty(updateDto.EmergencyContactName)) patient.EmergencyContactName = updateDto.EmergencyContactName;
             if (!string.IsNullOrEmpty(updateDto.EmergencyContactPhone)) patient.EmergencyContactPhone = updateDto.EmergencyContactPhone;
             if (!string.IsNullOrEmpty(updateDto.Allergies)) patient.Allergies = updateDto.Allergies;

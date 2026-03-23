@@ -46,6 +46,11 @@ public class PatientHealthRecord : BaseEntity
     public string? TemplateSnapshot { get; set; }
     public bool CreatedFromScratch { get; set; } = true;
 
+    // Follow-Up Tracking
+    public DateTime? FollowUpDate { get; set; }
+    public int? FollowUpDays { get; set; }
+    public bool FollowUpScheduled { get; set; } = false;
+
     // Metadata
     public bool IsStructured { get; set; } = true;
 

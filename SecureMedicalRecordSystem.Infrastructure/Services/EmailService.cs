@@ -247,4 +247,70 @@ LOCATION:Medical Center
 END:VEVENT
 END:VCALENDAR";
     }
+
+    public async Task SendFollowUpConfirmationAsync(
+        string patientEmail,
+        string patientName,
+        string doctorName,
+        DateTime followUpDate,
+        int durationMinutes,
+        Guid appointmentId)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(patientEmail)) return;
+
+            var subject = $"Follow-Up Appointment Confirmed — {followUpDate.ToLocalTime():MMMM d, yyyy}";
+            var body = EmailTemplates.GetFollowUpScheduledTemplate(patientName, doctorName, followUpDate);
+
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress(_settings.FromName, _settings.FromEmail));
+            message.To.Add(new MailboxAddress(patientName, patientEmail));
+            message.Subject = subject;
+
+            var bodyBuilder = new BodyBuilder { HtmlBody = body };
+
+            // Generate and attach the .ics calendar invite
+            var icsContent = GenerateFollowUpIcsContent(appointmentId, doctorName, followUpDate, durationMinutes);
+            var calendarBytes = System.Text.Encoding.UTF8.GetBytes(icsContent);
+            bodyBuilder.Attachments.Add("follow-up-appointment.ics", calendarBytes, new ContentType("text", "calendar"));
+
+            message.Body = bodyBuilder.ToMessageBody();
+
+            using var client = new SmtpClient();
+            await client.ConnectAsync(_settings.Host, _settings.Port, _settings.UseSsl ? SecureSocketOptions.StartTls : SecureSocketOptions.None);
+            await client.AuthenticateAsync(_settings.Username, _settings.Password);
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
+
+            _logger.LogInformation("Follow-up confirmation email sent to {Email}", patientEmail);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send follow-up confirmation email to {Email}", patientEmail);
+        }
+    }
+
+    private string GenerateFollowUpIcsContent(Guid appointmentId, string doctorName, DateTime followUpDate, int durationMinutes)
+    {
+        var startUtc = followUpDate.ToUniversalTime();
+        var endUtc = startUtc.AddMinutes(durationMinutes);
+        var start = startUtc.ToString("yyyyMMddTHHmmssZ");
+        var end = endUtc.ToString("yyyyMMddTHHmmssZ");
+        var now = DateTime.UtcNow.ToString("yyyyMMddTHHmmssZ");
+
+        return $@"BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//SecureMedicalRecordSystem//FollowUp//EN
+BEGIN:VEVENT
+UID:{appointmentId}
+DTSTAMP:{now}
+DTSTART:{start}
+DTEND:{end}
+SUMMARY:Follow-Up Appointment with Dr. {doctorName}
+DESCRIPTION:This is a follow-up appointment scheduled by your doctor.
+LOCATION:Medical Center
+END:VEVENT
+END:VCALENDAR";
+    }
 }

@@ -65,9 +65,9 @@ public class AppointmentService : IAppointmentService
                 : request.AppointmentDate.ToUniversalTime();
 
             // Validate date
-            if (appointmentDate <= DateTime.UtcNow)
+            if (appointmentDate <= DateTime.Now)
             {
-                _logger.LogWarning("Appointment date {Date} is not in the future (Now UTC: {Now})", appointmentDate, DateTime.UtcNow);
+                _logger.LogWarning("Appointment date {Date} is not in the future (Now UTC: {Now})", appointmentDate, DateTime.Now);
                 return (false, "Appointment date must be in the future.", null);
             }
 
@@ -96,14 +96,22 @@ public class AppointmentService : IAppointmentService
                     Duration = duration,
                     ReasonForVisit = request.ReasonForVisit,
                     Status = AppointmentStatus.Confirmed,
-                    CreatedAt = DateTime.UtcNow,
+                    CreatedAt = DateTime.Now,
                     ScheduledAt = appointmentDate,
-                    ConfirmedAt = DateTime.UtcNow,
+                    ConfirmedAt = DateTime.Now,
                     CreatedBy = requestingUserId,
                     IsActive = true
                 };
 
                 await _context.Appointments.AddAsync(appointment);
+
+                // Set as primary doctor if not already set
+                if (patient.PrimaryDoctorId == null)
+                {
+                    patient.PrimaryDoctorId = request.DoctorId;
+                    _logger.LogInformation("Setting Dr {DoctorId} as primary for patient {PatientId} during appointment creation", request.DoctorId, patient.Id);
+                }
+
                 await _context.SaveChangesAsync();
                 
                 // Double check for any overlaps created at the exact same millisecond
@@ -181,7 +189,7 @@ public class AppointmentService : IAppointmentService
 
         if (!includeHistory)
         {
-            var cutoffDate = DateTime.UtcNow.AddDays(-7);
+            var cutoffDate = DateTime.Now.AddDays(-7);
             query = query.Where(a => a.AppointmentDate >= cutoffDate || 
                                    a.Status == AppointmentStatus.Scheduled ||
                                    a.Status == AppointmentStatus.Confirmed);
@@ -249,7 +257,7 @@ public class AppointmentService : IAppointmentService
         else
         {
             var today = DateTime.UtcNow.Date;
-            var futureDate = today.AddDays(30);
+            var futureDate = today.AddDays(90); // Increased to 90 days for better calendar visibility
             query = query.Where(a => a.AppointmentDate >= today && a.AppointmentDate <= futureDate);
 
             // For active schedule, exclude cancelled, completed, and noshow
@@ -269,7 +277,7 @@ public class AppointmentService : IAppointmentService
         var doctor = await _context.Doctors.FindAsync(doctorId);
         if (doctor == null) return (false, "Doctor not found.", null);
 
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
         var today = now.Date;
         var endOfToday = today.AddDays(1);
 
@@ -307,14 +315,14 @@ public class AppointmentService : IAppointmentService
 
         // Business Rule: Patient can only cancel up to 24 hours before
         var isPatient = appointment.Patient.UserId == requestingUserId;
-        if (isPatient && (appointment.AppointmentDate - DateTime.UtcNow).TotalHours < 24)
+        if (isPatient && (appointment.AppointmentDate - DateTime.Now).TotalHours < 24)
         {
             return (false, "Appointments cannot be cancelled by patients within 24 hours of the scheduled time.");
         }
 
         appointment.Status = AppointmentStatus.Cancelled;
         appointment.IsCancelled = true;
-        appointment.CancelledAt = DateTime.UtcNow;
+        appointment.CancelledAt = DateTime.Now;
         appointment.CancellationReason = cancellationReason;
 
         await _context.SaveChangesAsync();
@@ -356,7 +364,7 @@ public class AppointmentService : IAppointmentService
         if (appointment.Status == AppointmentStatus.Completed)
             return (false, "Completed appointments cannot be rescheduled.", null);
 
-        if (newDateTime <= DateTime.UtcNow)
+        if (newDateTime <= DateTime.Now)
             return (false, "New date must be in the future.", null);
 
         if (await CheckAppointmentConflictAsync(appointment.DoctorId, newDateTime, appointment.Duration))
@@ -403,7 +411,7 @@ public class AppointmentService : IAppointmentService
 
         appointment.Status = AppointmentStatus.Completed;
         appointment.IsCompleted = true;
-        appointment.CompletedAt = DateTime.UtcNow;
+        appointment.CompletedAt = DateTime.Now;
         appointment.ConsultationNotes = consultationNotes;
 
         await _context.SaveChangesAsync();
@@ -431,7 +439,7 @@ public class AppointmentService : IAppointmentService
             return (false, "Only scheduled appointments can be confirmed.");
 
         appointment.Status = AppointmentStatus.Confirmed;
-        appointment.ConfirmedAt = DateTime.UtcNow;
+        appointment.ConfirmedAt = DateTime.Now;
 
         await _context.SaveChangesAsync();
 
@@ -470,7 +478,7 @@ public class AppointmentService : IAppointmentService
         {
             AppointmentId = appointmentId,
             MedicalRecordId = medicalRecordId,
-            LinkedAt = DateTime.UtcNow,
+            LinkedAt = DateTime.Now,
             LinkedBy = requestingUserId,
             Notes = notes
         };
@@ -529,7 +537,7 @@ public class AppointmentService : IAppointmentService
 
         if (patient == null) return (false, "Patient profile not found.", null);
 
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
         var suggestion = new SmartDoctorSuggestionDTO();
 
         // 1. Upcoming appointment context
@@ -658,7 +666,7 @@ public class AppointmentService : IAppointmentService
 
     public async Task<int> CheckAndTransitionAppointmentStatusesAsync()
     {
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
         var fifteenMinutesAgo = now.AddMinutes(-15);
         
         // 1. Transition Scheduled/Confirmed to NoShow if 15 mins past start time
@@ -698,7 +706,7 @@ public class AppointmentService : IAppointmentService
 
     private AppointmentDTO MapToDTO(Appointment appointment)
     {
-        var now = DateTime.UtcNow;
+        var now = DateTime.Now;
         var displayStatus = appointment.Status.ToString();
 
         // Dynamic status transition: Scheduled/Confirmed/InProgress -> Overdue if time exceeded
@@ -716,7 +724,7 @@ public class AppointmentService : IAppointmentService
             Id = appointment.Id,
             PatientId = appointment.PatientId,
             PatientName = appointment.Patient?.User != null ? $"{appointment.Patient.User.FirstName} {appointment.Patient.User.LastName}" : "Unknown",
-            PatientAge = appointment.Patient != null ? (DateTime.UtcNow.Year - appointment.Patient.DateOfBirth.Year) : 0,
+            PatientAge = appointment.Patient != null ? (DateTime.Now.Year - appointment.Patient.DateOfBirth.Year) : 0,
             PatientGender = appointment.Patient?.Gender ?? "Unknown",
             DoctorId = appointment.DoctorId,
             DoctorName = appointment.Doctor?.User != null ? $"Dr. {appointment.Doctor.User.FirstName} {appointment.Doctor.User.LastName}" : "Unknown",
@@ -736,10 +744,118 @@ public class AppointmentService : IAppointmentService
                 LinkedAt = ar.LinkedAt,
                 Notes = ar.Notes
             }).ToList() ?? new(),
-            CanCancel = !appointment.IsCancelled && !appointment.IsCompleted && (appointment.AppointmentDate - DateTime.UtcNow).TotalHours > 24,
-            CanReschedule = !appointment.IsCancelled && !appointment.IsCompleted && (appointment.AppointmentDate - DateTime.UtcNow).TotalHours > 24,
+            CanCancel = !appointment.IsCancelled && !appointment.IsCompleted && (appointment.AppointmentDate - DateTime.Now).TotalHours > 24,
+            CanReschedule = !appointment.IsCancelled && !appointment.IsCompleted && (appointment.AppointmentDate - DateTime.Now).TotalHours > 24,
             CreatedAt = appointment.CreatedAt,
             CompletedAt = appointment.CompletedAt
         };
+    }
+
+    public async Task<FollowUpAppointmentResult> ScheduleFollowUpAppointmentAsync(
+        Guid? originalAppointmentId,
+        DateTime preferredDate,
+        Guid doctorId,
+        Guid patientId,
+        int duration)
+    {
+        try
+        {
+            // 1. Standardize the incoming date (same logic as CreateAppointmentAsync)
+            var appointmentDate = preferredDate.Kind == DateTimeKind.Unspecified 
+                ? DateTime.SpecifyKind(preferredDate, DateTimeKind.Utc) 
+                : preferredDate.ToUniversalTime();
+
+            // 2. Must be in the future
+            if (appointmentDate <= DateTime.UtcNow)
+            {
+                return new FollowUpAppointmentResult
+                {
+                    WasScheduled = false,
+                    Message = "The proposed follow-up date must be in the future."
+                };
+            }
+
+            // 3. Check for scheduling conflicts
+            var hasConflict = await CheckAppointmentConflictAsync(doctorId, appointmentDate, duration);
+            if (hasConflict)
+            {
+                // Format for message: h:mm tt (e.g. 5:15 PM)
+                return new FollowUpAppointmentResult
+                {
+                    WasScheduled = false,
+                    Message = $"The requested time slot ({appointmentDate.ToLocalTime():dddd, MMMM d} at {appointmentDate.ToLocalTime():h:mm tt}) is already booked."
+                };
+            }
+
+            // 4. Validate doctor and patient exist
+            var doctor = await _context.Doctors.Include(d => d.User)
+                .FirstOrDefaultAsync(d => d.Id == doctorId);
+            var patient = await _context.Patients.Include(p => p.User)
+                .FirstOrDefaultAsync(p => p.Id == patientId);
+
+            if (doctor == null || patient == null)
+            {
+                return new FollowUpAppointmentResult { WasScheduled = false, Message = "Doctor or patient not found." };
+            }
+
+            // 5. Create the follow-up appointment
+            var followUpAppointment = new Appointment
+            {
+                Id = Guid.NewGuid(),
+                PatientId = patientId,
+                DoctorId = doctorId,
+                AppointmentDate = appointmentDate,
+                Duration = duration,
+                ReasonForVisit = "Follow-up appointment",
+                Status = AppointmentStatus.Scheduled,
+                ParentAppointmentId = originalAppointmentId,
+                CreatedAt = DateTime.Now,
+                ScheduledAt = appointmentDate,
+                IsActive = true,
+                IsCancelled = false,
+                IsCompleted = false,
+                CreatedBy = doctorId
+            };
+;
+
+            _context.Appointments.Add(followUpAppointment);
+            await _context.SaveChangesAsync();
+
+            // 7. Send follow-up confirmation email (fire-and-forget)
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var patientEmail = patient.User?.Email ?? string.Empty;
+                    var patientName = $"{patient.User?.FirstName} {patient.User?.LastName}";
+                    var doctorName = $"{doctor.User?.FirstName} {doctor.User?.LastName}";
+                    await _emailService.SendFollowUpConfirmationAsync(
+                        patientEmail, patientName, doctorName, appointmentDate, duration, followUpAppointment.Id);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Follow-up confirmation email failed for appointment {Id}", followUpAppointment.Id);
+                }
+            });
+
+            _logger.LogInformation("Follow-up appointment {Id} scheduled for {Date}", followUpAppointment.Id, appointmentDate);
+
+            return new FollowUpAppointmentResult
+            {
+                WasScheduled = true,
+                NewAppointmentId = followUpAppointment.Id,
+                ScheduledFor = appointmentDate,
+                Message = $"Follow-up appointment scheduled for {appointmentDate.ToLocalTime():dddd, MMMM d} at {appointmentDate.ToLocalTime():h:mm tt}."
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error scheduling follow-up appointment");
+            return new FollowUpAppointmentResult
+            {
+                WasScheduled = false,
+                Message = "An unexpected error occurred while scheduling the follow-up."
+            };
+        }
     }
 }

@@ -50,7 +50,7 @@ public class QRCodeGenerationService : IQRCodeGenerationService
 
     public string BuildAccessUrl(string token, QRTokenType tokenType)
     {
-        string baseUrl = _urlProvider.FrontendBaseUrl;
+        string baseUrl = _urlProvider.FrontendIpBaseUrl;
 
         return tokenType switch
         {

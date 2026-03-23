@@ -87,6 +87,7 @@ try
     builder.Services.AddScoped<IDoctorAvailabilityService, DoctorAvailabilityService>();
     builder.Services.AddScoped<IHealthRecordService, HealthRecordService>();
     builder.Services.AddScoped<ITemplateService, TemplateService>();
+    builder.Services.AddScoped<ILabUnitsService, LabUnitsService>();
 
     // DI Registrations - Phase 4: QR Code System
     builder.Services.AddScoped<IQRTokenService, QRTokenService>();
@@ -289,10 +290,11 @@ try
             // Skip migrations if running from EF tooling to avoid HostAbortedException
             var isEfTooling = AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name?.Contains("EntityFrameworkCore.Design") == true);
             
+            var dbContext = services.GetRequiredService<ApplicationDbContext>();
+            
             if (!isEfTooling)
             {
                 Log.Information("Applying Database Migrations...");
-                var dbContext = services.GetRequiredService<ApplicationDbContext>();
                 await dbContext.Database.MigrateAsync();
                 Log.Information("Database Migrations Applied.");
             }
@@ -301,6 +303,10 @@ try
             var roleManager = services.GetRequiredService<RoleManager<IdentityRole<Guid>>>();
             await IdentitySeeder.SeedAsync(userManager, roleManager);
             Log.Information("Identity Data Seeded.");
+
+            Log.Information("Seeding Master Data (Lab Units)...");
+            await MasterDataSeeder.SeedCommonLabUnitsAsync(dbContext);
+            Log.Information("Master Data Seeded.");
             
             // Backfill missing SecurityStamps to fix TOTP validation crash
             Log.Information("Backfilling missing SecurityStamps...");

@@ -19,5 +19,9 @@ public class PatientListResponseDTO
     public string? EmergencyContactRelationship { get; set; }
     
     public int SharedRecordsCount { get; set; }
+    public int AppointmentCount { get; set; }
     public DateTime? LatestSharedRecordDate { get; set; }
+    
+    public DateTime? LastAppointmentDate { get; set; }
+    public bool IsPrimary { get; set; }
 }

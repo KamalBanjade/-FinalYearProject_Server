@@ -80,6 +80,14 @@ public class HealthRecordController : ControllerBase
         return Ok(ApiResponse<List<HealthRecordDTO>>.SuccessResult(data, message));
     }
 
+    [HttpGet("visit-context/{patientId}")]
+    [Authorize(Policy = "DoctorPolicy")]
+    public async Task<ActionResult<ApiResponse<VisitContextDTO>>> GetVisitContext(Guid patientId)
+    {
+        var context = await _healthRecordService.GetVisitContextAsync(patientId);
+        return Ok(ApiResponse<VisitContextDTO>.SuccessResult(context, "Visit context retrieved"));
+    }
+
     [HttpPost("{id}/attributes")]
     [Authorize(Policy = "DoctorPolicy")]
     public async Task<IActionResult> AddCustomAttribute(Guid id, [FromBody] AddAttributeDTO request)

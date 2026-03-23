@@ -23,7 +23,7 @@ public class SystemController : ControllerBase
             Data = new
             {
                 LocalIp = _urlProvider.LocalIpAddress,
-                FrontendUrl = _urlProvider.FrontendBaseUrl,
+                FrontendUrl = _urlProvider.FrontendIpBaseUrl,
                 BackendUrl = _urlProvider.BackendBaseUrl,
                 Os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
                 Time = DateTime.UtcNow

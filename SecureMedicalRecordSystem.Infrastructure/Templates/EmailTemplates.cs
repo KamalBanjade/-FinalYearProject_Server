@@ -244,4 +244,68 @@ public static class EmailTemplates
         </body>
         </html>";
     }
+
+    public static string GetFollowUpScheduledTemplate(
+        string patientName,
+        string doctorName,
+        DateTime appointmentDate)
+    {
+        var formattedDate = appointmentDate.ToLocalTime().ToString("dddd, MMMM d, yyyy");
+        var formattedTime = appointmentDate.ToLocalTime().ToString("h:mm tt");
+
+        return $@"<!DOCTYPE html>
+        <html>
+        <head><meta charset='UTF-8'></head>
+        <body style='font-family: Inter, system-ui, sans-serif; background: #f8fafc; margin: 0; padding: 24px;'>
+            <div style='max-width: 560px; margin: 0 auto; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06);'>
+                <div style='background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); padding: 32px; text-align: center;'>
+                    <div style='display: inline-block; background: rgba(16,185,129,0.15); border-radius: 50%; padding: 16px; margin-bottom: 16px;'>
+                        <span style='font-size: 32px;'>📅</span>
+                    </div>
+                    <h1 style='color: white; margin: 0; font-size: 22px; font-weight: 900; letter-spacing: -0.5px;'>Follow-Up Appointment Confirmed</h1>
+                    <p style='color: #94a3b8; margin: 8px 0 0; font-size: 13px;'>Scheduled by Dr. {doctorName}</p>
+                </div>
+
+                <div style='padding: 32px;'>
+                    <p style='color: #374151; font-size: 15px; margin: 0 0 24px;'>Hello <strong>{patientName}</strong>,</p>
+                    <p style='color: #6b7280; font-size: 14px; line-height: 1.6; margin: 0 0 24px;'>
+                        Your doctor has scheduled a follow-up appointment for you as part of your recent consultation. Please find the details below.
+                    </p>
+
+                    <div style='background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 12px; padding: 20px; margin-bottom: 24px;'>
+                        <table style='width: 100%; border-collapse: collapse;'>
+                            <tr>
+                                <td style='padding: 8px 0; color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; width: 40%;'>Date</td>
+                                <td style='padding: 8px 0; color: #111827; font-size: 14px; font-weight: 700;'>{formattedDate}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding: 8px 0; color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;'>Time</td>
+                                <td style='padding: 8px 0; color: #111827; font-size: 14px; font-weight: 700;'>{formattedTime}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding: 8px 0; color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;'>Doctor</td>
+                                <td style='padding: 8px 0; color: #111827; font-size: 14px; font-weight: 700;'>Dr. {doctorName}</td>
+                            </tr>
+                            <tr>
+                                <td style='padding: 8px 0; color: #6b7280; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em;'>Type</td>
+                                <td style='padding: 8px 0; color: #059669; font-size: 14px; font-weight: 700;'>Follow-Up Visit</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <p style='color: #6b7280; font-size: 13px; line-height: 1.6; margin: 0 0 8px;'>
+                        A calendar invite (.ics file) is attached to this email. You can import it into Google Calendar, Outlook, or Apple Calendar.
+                    </p>
+                    <p style='color: #6b7280; font-size: 13px; line-height: 1.6; margin: 0;'>
+                        If you need to reschedule, please contact the clinic as soon as possible.
+                    </p>
+                </div>
+
+                <div style='background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 11px; color: #94a3b8;'>
+                    <p>© {DateTime.Now.Year} Medical Record System &nbsp;|&nbsp; This appointment was booked by your doctor</p>
+                </div>
+            </div>
+        </body>
+        </html>";
+    }
 }
