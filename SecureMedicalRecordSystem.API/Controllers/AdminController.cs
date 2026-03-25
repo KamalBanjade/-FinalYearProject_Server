@@ -51,7 +51,7 @@ public class AdminController : ControllerBase
             return BadRequest(ApiResponse.FailureResult(result.Message));
         }
 
-        return StatusCode(201, ApiResponse.SuccessResult(result.Data, result.Message));
+        return Ok(ApiResponse.SuccessResult((object?)null, result.Message));
     }
 
     [HttpGet("doctors")]
@@ -110,6 +110,24 @@ public class AdminController : ControllerBase
     // ==========================================
     // USER MANAGEMENT
     // ==========================================
+
+    [HttpPost("patients")]
+    public async Task<IActionResult> CreatePatient([FromBody] SecureMedicalRecordSystem.Core.DTOs.Auth.CreatePatientRequestDTO request)
+    {
+        var adminUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(adminUserIdClaim) || !Guid.TryParse(adminUserIdClaim, out var adminUserId))
+        {
+            return Unauthorized(ApiResponse.FailureResult("Invalid admin session."));
+        }
+
+        // Admin creates patient without a Primary Doctor initially
+        var result = await _authService.CreatePatientAccountAsync(request, null, adminUserId);
+        if (result.Success)
+        {
+            return Ok(ApiResponse.SuccessResult((object?)null, result.Message));
+        }
+        return BadRequest(ApiResponse.FailureResult(result.Message));
+    }
 
     [HttpGet("users")]
     public async Task<IActionResult> GetAllUsers(

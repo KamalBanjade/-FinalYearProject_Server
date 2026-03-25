@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
+using Serilog;
 using SecureMedicalRecordSystem.Core.DTOs.Appointments;
 using SecureMedicalRecordSystem.Core.DTOs.MedicalRecords;
 using SecureMedicalRecordSystem.Core.Entities;
@@ -16,19 +18,22 @@ public class AppointmentService : IAppointmentService
     private readonly IAuditLogService _auditLogService;
     private readonly IDoctorAvailabilityService _availabilityService;
     private readonly ILogger<AppointmentService> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public AppointmentService(
         ApplicationDbContext context,
         IEmailService emailService,
         IAuditLogService auditLogService,
         IDoctorAvailabilityService availabilityService,
-        ILogger<AppointmentService> logger)
+        ILogger<AppointmentService> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _context = context;
         _emailService = emailService;
         _auditLogService = auditLogService;
         _availabilityService = availabilityService;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     public async Task<(bool Success, string Message, AppointmentDTO? Data)> CreateAppointmentAsync(
@@ -139,14 +144,16 @@ public class AppointmentService : IAppointmentService
                 var doctorEmail = doctor.User.Email!;
                 _ = Task.Run(async () =>
                 {
+                    using var scope = _scopeFactory.CreateScope();
+                    var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
                     try 
                     {
-                        await _emailService.SendAppointmentConfirmationEmailAsync(patientEmail, appointment);
-                        await _emailService.SendDoctorNewAppointmentNotificationAsync(doctorEmail, appointment);
+                        await emailSvc.SendAppointmentConfirmationEmailAsync(patientEmail, appointment);
+                        await emailSvc.SendDoctorNewAppointmentNotificationAsync(doctorEmail, appointment);
                     }
                     catch (Exception emailEx)
                     {
-                        _logger.LogError(emailEx, "Background email failed for appointment {Id}", appointment.Id);
+                        Log.Error(emailEx, "Background email failed for appointment {Id}", appointment.Id);
                     }
                 });
 
@@ -338,12 +345,14 @@ public class AppointmentService : IAppointmentService
         var dEmail = appointment.Doctor.User.Email!;
         _ = Task.Run(async () =>
         {
+            using var scope = _scopeFactory.CreateScope();
+            var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
             try
             {
-                await _emailService.SendAppointmentCancelledEmailAsync(pEmail, appointment, cancellationReason);
-                await _emailService.SendAppointmentCancelledEmailAsync(dEmail, appointment, cancellationReason);
+                await emailSvc.SendAppointmentCancelledEmailAsync(pEmail, appointment, cancellationReason);
+                await emailSvc.SendAppointmentCancelledEmailAsync(dEmail, appointment, cancellationReason);
             }
-            catch (Exception ex) { _logger.LogError(ex, "Background cancel email failed for appointment {Id}", appointment.Id); }
+            catch (Exception ex) { Log.Error(ex, "Background cancel email failed for appointment {Id}", appointment.Id); }
         });
 
         return (true, "Appointment cancelled successfully.");
@@ -387,8 +396,10 @@ public class AppointmentService : IAppointmentService
         var reschedEmail = appointment.Patient.User.Email!;
         _ = Task.Run(async () =>
         {
-            try { await _emailService.SendAppointmentRescheduledEmailAsync(reschedEmail, appointment); }
-            catch (Exception ex) { _logger.LogError(ex, "Background reschedule email failed for appointment {Id}", appointment.Id); }
+            using var scope = _scopeFactory.CreateScope();
+            var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            try { await emailSvc.SendAppointmentRescheduledEmailAsync(reschedEmail, appointment); }
+            catch (Exception ex) { Log.Error(ex, "Background reschedule email failed for appointment {Id}", appointment.Id); }
         });
 
         return (true, "Appointment rescheduled successfully.", MapToDTO(appointment));
@@ -447,8 +458,10 @@ public class AppointmentService : IAppointmentService
         var confirmEmail = appointment.Patient.User.Email!;
         _ = Task.Run(async () =>
         {
-            try { await _emailService.SendAppointmentConfirmedEmailAsync(confirmEmail, appointment); }
-            catch (Exception ex) { _logger.LogError(ex, "Background confirm email failed for appointment {Id}", appointment.Id); }
+            using var scope = _scopeFactory.CreateScope();
+            var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+            try { await emailSvc.SendAppointmentConfirmedEmailAsync(confirmEmail, appointment); }
+            catch (Exception ex) { Log.Error(ex, "Background confirm email failed for appointment {Id}", appointment.Id); }
         });
 
         return (true, "Appointment confirmed.");

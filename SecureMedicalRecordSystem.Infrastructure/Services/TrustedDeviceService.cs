@@ -6,6 +6,8 @@ using SecureMedicalRecordSystem.Core.Interfaces;
 using SecureMedicalRecordSystem.Infrastructure.Data;
 using System.Security.Cryptography;
 using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
+using Serilog;
 
 namespace SecureMedicalRecordSystem.Infrastructure.Services;
 
@@ -14,15 +16,18 @@ public class TrustedDeviceService : ITrustedDeviceService
     private readonly ApplicationDbContext _context;
     private readonly ILogger<TrustedDeviceService> _logger;
     private readonly IEmailService _emailService;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public TrustedDeviceService(
         ApplicationDbContext context, 
         ILogger<TrustedDeviceService> logger,
-        IEmailService emailService)
+        IEmailService emailService,
+        IServiceScopeFactory scopeFactory)
     {
         _context = context;
         _logger = logger;
         _emailService = emailService;
+        _scopeFactory = scopeFactory;
     }
 
     public Task<string?> GetDeviceTokenFromRequest(string? cookieDeviceToken)
@@ -119,11 +124,13 @@ If this wasn't you, immediately:
 3. Revoke all trusted devices
 4. Change your password";
 
-            var alertEmail = user.Email;
+            var alertEmail = user.Email!;
             _ = Task.Run(async () =>
             {
-                try { await _emailService.SendSecurityAlertEmailAsync(alertEmail, "New Trusted Device Added", emailBody); }
-                catch (Exception ex) { _logger.LogError(ex, "Background security alert email failed for user {UserId}", userId); }
+                using var scope = _scopeFactory.CreateScope();
+                var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                try { await emailSvc.SendSecurityAlertEmailAsync(alertEmail, "New Trusted Device Added", emailBody); }
+                catch (Exception ex) { Log.Error(ex, "Background security alert email failed for user {UserId}", userId); }
             });
         }
 

@@ -75,5 +75,11 @@ public interface IMedicalRecordsService
 
     // Smart Assignment
     Task<(bool Success, string Message, SmartDoctorSuggestionDTO? Data)> GetSmartDoctorSuggestionsAsync(Guid patientId);
+
+    /// <summary>
+    /// Completely removes a patient, their records, appointments, and user account.
+    /// This is a high-privilege destructive operation.
+    /// </summary>
+    Task<(bool Success, string Message)> DeletePatientEntirelyAsync(Guid patientId, Guid requestingUserId);
 }
 

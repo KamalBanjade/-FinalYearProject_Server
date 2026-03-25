@@ -7,7 +7,8 @@ namespace SecureMedicalRecordSystem.Core.Interfaces;
 public interface IAuthService
 {
     Task<(bool Success, string Message, RegistrationResponseDTO? Data)> RegisterPatientAsync(RegisterRequestDTO request);
-    Task<(bool Success, string Message, InviteDoctorResponseDTO? Data)> InviteDoctorAsync(InviteDoctorRequestDTO request, Guid adminUserId);
+    Task<(bool Success, string Message)> CreatePatientAccountAsync(CreatePatientRequestDTO request, Guid? primaryDoctorId, Guid actorUserId);
+    Task<(bool Success, string Message)> InviteDoctorAsync(InviteDoctorRequestDTO request, Guid adminUserId);
     Task<(bool Success, string Message, LoginResponseDTO? Data)> LoginAsync(LoginRequestDTO request);
     Task<(bool Success, string Message)> ConfirmEmailAsync(Guid userId, string token);
     Task<(bool Success, string Message)> ResendVerificationEmailAsync(string email);

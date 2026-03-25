@@ -202,56 +202,67 @@ public class AuditLogService : IAuditLogService
                     Severity  = l.Severity.ToString()
                 }).ToListAsync();
 
+            // 2. Trend Calculations
+            var firstRegistration = await _context.Users.AsNoTracking().MinAsync(u => (DateTime?)u.CreatedAt) ?? last4w;
+            var startDate         = firstRegistration.Date;
+            
+            var userRegistrations = await _context.Users
+                .Select(u => new { u.CreatedAt })
+                .ToListAsync();
+
+            var doctorsTimeline = await _context.Doctors
+                .Select(d => d.User.CreatedAt)
+                .ToListAsync();
+
+            var patientsTimeline = await _context.Patients
+                .Select(p => p.User.CreatedAt)
+                .ToListAsync();
+
             var qrTrendBase = await _context.ScanHistories
-                .Where(s => s.ScannedAt >= last7d)
+                .Where(s => s.ScannedAt >= startDate)
                 .GroupBy(s => new { Day = s.ScannedAt.Date, s.TokenType })
                 .Select(g => new { g.Key.Day, g.Key.TokenType, Count = g.Count() })
                 .ToListAsync();
 
-            var userRegistrations = await _context.Users
-                .Where(u => u.CreatedAt >= last4w)
-                .Select(u => new { u.CreatedAt })
-                .ToListAsync();
+            var registrationCounts = userRegistrations
+                .GroupBy(u => u.CreatedAt.Date)
+                .ToDictionary(g => g.Key, g => g.Count());
 
-            var doctorsFromWindow = await _context.Doctors
-                .Where(d => d.User.CreatedAt >= last4w)
-                .Select(d => d.User.CreatedAt)
-                .ToListAsync();
-
-            var patientsFromWindow = await _context.Patients
-                .Where(p => p.User.CreatedAt >= last4w)
-                .Select(p => p.User.CreatedAt)
-                .ToListAsync();
+            var loginCounts = await _context.AuditLogs
+                .AsNoTracking()
+                .Where(l => l.Timestamp >= startDate && (l.Action.Contains("Login") || l.Action.Contains("login")))
+                .GroupBy(l => l.Timestamp.Date)
+                .Select(g => new { Day = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.Day, x => x.Count);
 
             var activeAccessSessions = await _context.AccessSessions.CountAsync(s => s.IsActive && s.ExpiresAt > now);
 
-            var qrTrend = new List<SecureMedicalRecordSystem.Core.DTOs.Admin.TimeSeriesDataPointDTO>();
-            for (int i = 6; i >= 0; i--)
-            {
-                var day = nowToDay.AddDays(-i);
-                qrTrend.Add(new SecureMedicalRecordSystem.Core.DTOs.Admin.TimeSeriesDataPointDTO {
-                    Label = day.ToString("ddd"),
-                    Value = qrTrendBase.Where(x => x.Day == day && x.TokenType == QRTokenType.Emergency).Sum(x => x.Count),
-                    Value2 = qrTrendBase.Where(x => x.Day == day && x.TokenType == QRTokenType.Normal).Sum(x => x.Count)
-                });
-            }
-
+            var qrTrend   = new List<SecureMedicalRecordSystem.Core.DTOs.Admin.TimeSeriesDataPointDTO>();
             var userTrend = new List<SecureMedicalRecordSystem.Core.DTOs.Admin.TimeSeriesDataPointDTO>();
+            var daysCount = (nowToDay - startDate).Days;
 
-
-            for (int i = 3; i >= 0; i--)
+            for (int i = 0; i <= daysCount; i++)
             {
-                var weekStart = referenceDay.AddDays(-(int)referenceDay.DayOfWeek - (i * 7));
-                var weekEnd   = weekStart.AddDays(7);
-                var label     = i == 0 ? (referenceDay == nowToDay ? "Today" : referenceDay.ToString("MMM dd")) : weekStart.ToString("MMM dd");
-                var cutOff    = (i == 0) ? referenceDate : weekEnd;
+                var currentDay = startDate.AddDays(i);
+                var nextDay    = currentDay.AddDays(1);
+                
+                qrTrend.Add(new SecureMedicalRecordSystem.Core.DTOs.Admin.TimeSeriesDataPointDTO {
+                    Label  = currentDay.ToString("MMM dd"),
+                    Value  = qrTrendBase.Where(x => x.Day == currentDay && x.TokenType == QRTokenType.Emergency).Sum(x => x.Count),
+                    Value2 = qrTrendBase.Where(x => x.Day == currentDay && x.TokenType == QRTokenType.Normal).Sum(x => x.Count)
+                });
+
+                registrationCounts.TryGetValue(currentDay, out int regCount);
+                loginCounts.TryGetValue(currentDay, out int logCount);
 
                 userTrend.Add(new SecureMedicalRecordSystem.Core.DTOs.Admin.TimeSeriesDataPointDTO
                 {
-                    Label  = label,
-                    Value  = (userStats?.Total ?? 0) - userRegistrations.Count(u => u.CreatedAt >= cutOff),
-                    Value2 = (userStats?.Doctors ?? 0) - doctorsFromWindow.Count(c => c >= cutOff),
-                    Value3 = (userStats?.Patients ?? 0) - patientsFromWindow.Count(c => c >= cutOff)
+                    Label         = currentDay.ToString("MMM dd"),
+                    Value         = (userStats?.Total ?? 0) - userRegistrations.Count(u => u.CreatedAt >= nextDay),
+                    Value2        = (userStats?.Doctors ?? 0) - doctorsTimeline.Count(c => c >= nextDay),
+                    Value3        = (userStats?.Patients ?? 0) - patientsTimeline.Count(c => c >= nextDay),
+                    Value4        = regCount + logCount,
+                    IsActivityDay = (regCount + logCount) > 0
                 });
             }
 

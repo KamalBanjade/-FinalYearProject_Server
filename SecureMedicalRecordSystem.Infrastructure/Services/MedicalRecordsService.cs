@@ -263,7 +263,7 @@ public class MedicalRecordsService : IMedicalRecordsService
     /// </summary>
     private IQueryable<MedicalRecordResponseDTO> ProjectToDto(
         IQueryable<MedicalRecord> query,
-        string patientName,
+        string? patientName,
         bool canDownload)
     {
         return query
@@ -296,21 +296,21 @@ public class MedicalRecordsService : IMedicalRecordsService
                     : null,
                 UploadedAt = r.UploadedAt,
                 // Prefer auto-generated report author (assigned doctor) over generic uploader
-                UploadedBy = (r.RecordType != null && r.RecordType.Contains("Auto-Generated") && r.AssignedDoctor != null)
+                UploadedBy = (r.RecordType != null && (r.RecordType.Contains("Auto-Generated") || r.RecordType.Contains("Clinical Report")) && r.AssignedDoctor != null)
                     ? ("Dr. " + r.AssignedDoctor.User!.FirstName + " " + r.AssignedDoctor.User.LastName).Trim()
-                    : patientName,
-                PatientName = patientName,
+                    : (patientName ?? (r.Patient.User!.FirstName + " " + r.Patient.User.LastName)),
+                PatientName = patientName ?? (r.Patient.User!.FirstName + " " + r.Patient.User.LastName),
                 AssignedDoctorName = r.AssignedDoctor != null
                     ? ("Dr. " + r.AssignedDoctor.User!.FirstName + " " + r.AssignedDoctor.User.LastName).Trim()
                     : null,
                 AssignedDoctorId = r.AssignedDoctorId,
                 AssignedDepartment = r.AssignedDoctor != null ? r.AssignedDoctor.Department!.Name : null,
-                IsCertified = r.Certifications.Any(c => c.IsValid),
+                IsCertified = r.Certifications.Any(c => c.IsValid) || (r.RecordType != null && (r.RecordType.Contains("Auto-Generated") || r.RecordType.Contains("Clinical Report"))),
                 CertifiedBy = r.Certifications
                     .Where(c => c.IsValid)
                     .OrderByDescending(c => c.SignedAt)
                     .Select(c => c.Doctor.User!.FirstName + " " + c.Doctor.User.LastName)
-                    .FirstOrDefault(),
+                    .FirstOrDefault() ?? (r.RecordType != null && (r.RecordType.Contains("Auto-Generated") || r.RecordType.Contains("Clinical Report")) && r.AssignedDoctor != null ? r.AssignedDoctor.User!.FirstName + " " + r.AssignedDoctor.User.LastName : null),
                 CertifiedById = r.Certifications
                     .Where(c => c.IsValid)
                     .OrderByDescending(c => c.SignedAt)
@@ -320,7 +320,7 @@ public class MedicalRecordsService : IMedicalRecordsService
                     .Where(c => c.IsValid)
                     .OrderByDescending(c => c.SignedAt)
                     .Select(c => (DateTime?)c.SignedAt)
-                    .FirstOrDefault(),
+                    .FirstOrDefault() ?? (r.RecordType != null && (r.RecordType.Contains("Auto-Generated") || r.RecordType.Contains("Clinical Report")) ? (r.RecordDate ?? r.UploadedAt) : (DateTime?)null),
                 Version = r.Version,
                 CanDownload = canDownload,
                 Tags = r.Tags,
@@ -402,29 +402,15 @@ public class MedicalRecordsService : IMedicalRecordsService
 
         if (doctorId == Guid.Empty) return (false, "Doctor profile not found.", null);
 
-        var records = await _context.MedicalRecords
-            .AsNoTracking()
+        var dtos = await ProjectToDto(_context.MedicalRecords
             .Where(r => r.State == RecordState.Certified && !r.IsDeleted)
-            .Where(r => r.Certifications.Any(c => c.DoctorId == doctorId && c.IsValid && !c.IsDeleted))
-            .Include(r => r.Patient)
-                .ThenInclude(p => p.User)
-            .Include(r => r.AssignedDoctor)
-                .ThenInclude(d => d!.User)
-            .Include(r => r.AssignedDoctor) // Fix N+1: Department for mapping
-                .ThenInclude(d => d!.Department)
-            .Include(r => r.Certifications.Where(c => c.IsValid && !c.IsDeleted))
-                .ThenInclude(c => c.Doctor)
-                    .ThenInclude(d => d.User)
+            .Where(r => r.Certifications.Any(c => c.DoctorId == doctorId && c.IsValid && !c.IsDeleted) || 
+                       (r.AssignedDoctorId == doctorId && r.RecordType != null && (r.RecordType.Contains("Auto-Generated") || r.RecordType.Contains("Clinical Report")))),
+            null, // Multi-patient query: determine name in projection
+            canDownload: true)
             .OrderByDescending(r => r.CertifiedAt)
-            .AsSplitQuery()
             .ToListAsync();
 
-        var dtos = records.Select(r => {
-            var patientName = r.Patient?.User != null 
-                ? $"{r.Patient.User.FirstName} {r.Patient.User.LastName}" 
-                : "Unknown Patient";
-            return MapToDto(r, patientName, true);
-        }).ToList();
         return (true, "Success", dtos);
     }
 
@@ -455,6 +441,7 @@ public class MedicalRecordsService : IMedicalRecordsService
             FirstName = p.User?.FirstName ?? "",
             LastName = p.User?.LastName ?? "",
             Email = p.User?.Email ?? "",
+            PhoneNumber = p.User?.PhoneNumber,
             DateOfBirth = p.DateOfBirth,
             Gender = p.Gender,
             BloodType = p.BloodType,
@@ -502,6 +489,7 @@ public class MedicalRecordsService : IMedicalRecordsService
                 FirstName = p.User != null ? p.User.FirstName : "",
                 LastName = p.User != null ? p.User.LastName : "",
                 Email = p.User != null ? p.User.Email : "",
+                PhoneNumber = p.User != null ? p.User.PhoneNumber : null,
                 DateOfBirth = p.DateOfBirth,
                 Gender = p.Gender,
                 BloodType = p.BloodType,
@@ -1112,5 +1100,92 @@ public class MedicalRecordsService : IMedicalRecordsService
             ?? suggestion.RecentDoctors.FirstOrDefault();
 
         return (true, "Suggestions retrieved.", suggestion);
+    }
+
+    public async Task<(bool Success, string Message)> DeletePatientEntirelyAsync(
+        Guid patientId,
+        Guid requestingUserId)
+    {
+        _logger.LogWarning("DANGER: Starting full deletion for patient {PatientId} requested by {UserId}", patientId, requestingUserId);
+
+        var patient = await _context.Patients
+            .Include(p => p.User)
+            .Include(p => p.MedicalRecords)
+            .Include(p => p.Appointments)
+            .Include(p => p.StructuredRecords)
+            .FirstOrDefaultAsync(p => p.Id == patientId);
+
+        if (patient == null) return (false, "Patient not found.");
+
+        try
+        {
+            // 1. Delete Files from Tigris (S3)
+            var fileKeys = patient.MedicalRecords.Select(r => r.S3ObjectKey).Distinct().ToList();
+            foreach (var key in fileKeys)
+            {
+                _logger.LogInformation("Deleting file {Key} for patient {PatientId}", key, patientId);
+                await _tigrisService.DeleteFileAsync(key);
+            }
+
+            // 2. Delete Appointments (due to Restrict constraint)
+            if (patient.Appointments.Any())
+            {
+                _context.Appointments.RemoveRange(patient.Appointments);
+            }
+
+            // 3. Delete Structured Records (due to Restrict constraint)
+            if (patient.StructuredRecords.Any())
+            {
+                _context.PatientHealthRecords.RemoveRange(patient.StructuredRecords);
+            }
+
+            // 4. Delete Scan History (due to Restrict constraint)
+            var scanHistory = await _context.ScanHistories.Where(s => s.PatientId == patientId).ToListAsync();
+            if (scanHistory.Any())
+            {
+                _context.ScanHistories.RemoveRange(scanHistory);
+            }
+
+            // 5. Delete Access Sessions (due to Restrict/NoAction)
+            var accessSessions = await _context.AccessSessions.Where(s => s.PatientId == patientId).ToListAsync();
+            if (accessSessions.Any())
+            {
+                _context.AccessSessions.RemoveRange(accessSessions);
+            }
+
+            // 6. Delete ApplicationUser (Principal)
+            // This will cascade to Patient, MedicalRecords, QRTokens, etc.
+            var user = patient.User;
+            if (user != null)
+            {
+                var result = await _userManager.DeleteAsync(user);
+                if (!result.Succeeded)
+                {
+                    var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                    return (false, $"Failed to delete user account: {errors}");
+                }
+            }
+            else
+            {
+                _context.Patients.Remove(patient);
+                await _context.SaveChangesAsync();
+            }
+
+            // 7. Audit Log
+            string patientName = user != null ? $"{user.FirstName} {user.LastName}" : "Unknown Patient";
+            await _auditLogService.LogAsync(
+                requestingUserId,
+                "Patient Entirely Deleted",
+                $"Deleted patient {patientName} and all associated data.",
+                "0.0.0.0", "Service", "Patient", patientId.ToString(),
+                AuditSeverity.Critical);
+
+            return (true, "Patient and all associated data have been permanently deleted.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Critical failure during patient deletion for {PatientId}", patientId);
+            return (false, $"Deletion failed: {ex.Message}");
+        }
     }
 }

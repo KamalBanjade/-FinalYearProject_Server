@@ -26,6 +26,7 @@ public class DoctorController : ControllerBase
     private readonly IAuditLogService _auditLogService;
     private readonly ICachingService _cache;
     private readonly ILogger<DoctorController> _logger;
+    private readonly IAuthService _authService;
 
     private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
     {
@@ -39,7 +40,8 @@ public class DoctorController : ControllerBase
         IImageStorageService imageStorageService,
         IAuditLogService auditLogService,
         ICachingService cache,
-        ILogger<DoctorController> logger)
+        ILogger<DoctorController> logger,
+        IAuthService authService)
     {
         _context = context;
         _userManager = userManager;
@@ -48,6 +50,7 @@ public class DoctorController : ControllerBase
         _auditLogService = auditLogService;
         _cache = cache;
         _logger = logger;
+        _authService = authService;
     }
 
     [HttpGet("profile")]
@@ -345,6 +348,28 @@ public class DoctorController : ControllerBase
     }
 
     // =====================
+    // PATIENT MANAGEMENT
+    // =====================
+
+    [HttpPost("patients")]
+    public async Task<IActionResult> CreatePatient([FromBody] SecureMedicalRecordSystem.Core.DTOs.Auth.CreatePatientRequestDTO request)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return Unauthorized(ApiResponse.FailureResult("Invalid session."));
+
+        var doctor = await _context.Doctors.FirstOrDefaultAsync(d => d.UserId == userId);
+        if (doctor == null) return Unauthorized(ApiResponse.FailureResult("Doctor profile not found."));
+
+        var result = await _authService.CreatePatientAccountAsync(request, doctor.Id, userId);
+        if (result.Success)
+        {
+            return Ok(ApiResponse.SuccessResult((object?)null, result.Message));
+        }
+        return BadRequest(ApiResponse.FailureResult(result.Message));
+    }
+
+    // =====================
     // FSM TRANSITION ENDPOINTS
     // =====================
 
@@ -424,6 +449,24 @@ public class DoctorController : ControllerBase
         Response.Headers["Pragma"] = "no-cache";
         Response.Headers["X-Content-Type-Options"] = "nosniff";
         return File(result.FileStream!, result.ContentType!, result.FileName, enableRangeProcessing: false);
+    }
+
+    [HttpDelete("patients/{id}")]
+    public async Task<IActionResult> DeletePatient(Guid id)
+    {
+        var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !Guid.TryParse(userIdClaim, out var userId))
+            return Unauthorized(ApiResponse.FailureResult("Invalid session."));
+
+        // Permissions: Only the assigned/primary doctor or an admin can delete.
+        // For now, any doctor who can see the patient in their directory (has shared records/primary) can delete.
+        var result = await _medicalRecordsService.DeletePatientEntirelyAsync(id, userId);
+        if (!result.Success)
+        {
+            return BadRequest(ApiResponse.FailureResult(result.Message));
+        }
+
+        return Ok(ApiResponse.SuccessResult((object?)null, result.Message));
     }
 
 }

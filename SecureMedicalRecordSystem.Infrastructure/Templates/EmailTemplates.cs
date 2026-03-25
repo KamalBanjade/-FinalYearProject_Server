@@ -49,6 +49,44 @@ public static class EmailTemplates
         </html>";
     }
 
+    public static string GetPatientInvitationTemplate(string patientName, string email, string temporaryPassword, string resetLink)
+    {
+        return $@"
+        <html>
+        <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
+            <div style='max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);'>
+                <div style='background-color: #10b981; color: white; padding: 24px; text-align: center;'>
+                    <h1 style='margin: 0; font-size: 24px;'>Welcome to Medical Record System</h1>
+                </div>
+                <div style='padding: 32px;'>
+                    <p style='font-size: 18px; font-weight: bold;'>Dear {patientName},</p>
+                    <p>Your healthcare provider has created a secure patient portal account for you in the Medical Record Management System.</p>
+                    
+                    <div style='background-color: #f0fdf4; padding: 24px; border-radius: 8px; border: 1px solid #bbf7d0; margin: 24px 0;'>
+                        <h2 style='font-size: 16px; margin-top: 0; color: #065f46;'>Your Login Credentials</h2>
+                        <p style='margin: 8px 0;'><strong>Email:</strong> {email}</p>
+                        <p style='margin: 8px 0;'><strong>Temporary Password:</strong> <code style='background: #e2e8f0; padding: 4px 8px; border-radius: 4px; font-weight: bold; color: #333;'>{temporaryPassword}</code></p>
+                    </div>
+
+                    <p>To access your medical records and communicate securely with your doctor, please set your password by clicking the button below:</p>
+                    <div style='text-align: center; margin: 32px 0;'>
+                        <a href='{resetLink}' style='background-color: #10b981; color: white; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;'>Set My Password to Access My Account</a>
+                    </div>
+                    <p style='font-size: 12px; color: #64748b; text-align: center;'>This link expires in 24 hours.</p>
+
+                    <div style='margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 24px;'>
+                        <p style='margin: 0;'>If you have any questions, please contact your clinic.</p>
+                    </div>
+                </div>
+                <div style='background-color: #f1f5f9; padding: 16px; text-align: center; font-size: 12px; color: #94a3b8;'>
+                    <p style='margin: 0;'>© {DateTime.Now.Year} Medical Record System. All rights reserved.</p>
+                    <p style='margin: 4px 0;'>This is an automated message. Please do not reply to this email.</p>
+                </div>
+            </div>
+        </body>
+        </html>";
+    }
+
     public static string GetPasswordResetTemplate(string resetLink)
     {
         return $@"

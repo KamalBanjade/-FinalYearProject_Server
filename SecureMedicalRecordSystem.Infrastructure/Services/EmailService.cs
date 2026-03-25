@@ -45,6 +45,22 @@ public class EmailService : IEmailService
         }
     }
 
+    public async Task<bool> SendPatientInvitationEmailAsync(string toEmail, string patientName, string temporaryPassword, string resetLink)
+    {
+        try
+        {
+            var subject = "Welcome to Medical Record System";
+            var body = EmailTemplates.GetPatientInvitationTemplate(patientName, toEmail, temporaryPassword, resetLink);
+
+            return await SendEmailAsync(toEmail, subject, body);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error preparing patient invitation email for {Email}", toEmail);
+            return false;
+        }
+    }
+
     public async Task<bool> SendPasswordResetEmailAsync(string toEmail, string resetLink)
     {
         try
