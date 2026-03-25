@@ -438,6 +438,7 @@ public class MedicalRecordsService : IMedicalRecordsService
         var result = new PatientListResponseDTO
         {
             Id = p.Id,
+            UserId = p.UserId,
             FirstName = p.User?.FirstName ?? "",
             LastName = p.User?.LastName ?? "",
             Email = p.User?.Email ?? "",
@@ -486,6 +487,7 @@ public class MedicalRecordsService : IMedicalRecordsService
             .Select(p => new PatientListResponseDTO
             {
                 Id = p.Id,
+                UserId = p.UserId,
                 FirstName = p.User != null ? p.User.FirstName : "",
                 LastName = p.User != null ? p.User.LastName : "",
                 Email = p.User != null ? p.User.Email : "",
@@ -1034,6 +1036,7 @@ public class MedicalRecordsService : IMedicalRecordsService
             suggestion.UpcomingAppointmentDoctor = new DoctorSuggestionItem
             {
                 Id = appointment.Doctor.Id.ToString(),
+                UserId = appointment.Doctor.UserId.ToString(),
                 FullName = $"Dr. {appointment.Doctor.User.FirstName} {appointment.Doctor.User.LastName}",
                 Department = appointment.Doctor.Department?.Name ?? "General",
                 SuggestionType = "Appointment",
@@ -1048,6 +1051,7 @@ public class MedicalRecordsService : IMedicalRecordsService
             suggestion.PrimaryDoctor = new DoctorSuggestionItem
             {
                 Id = patient.PrimaryDoctor.Id.ToString(),
+                UserId = patient.PrimaryDoctor.UserId.ToString(),
                 FullName = $"Dr. {patient.PrimaryDoctor.User.FirstName} {patient.PrimaryDoctor.User.LastName}",
                 Department = patient.PrimaryDoctor.Department?.Name ?? "General",
                 SuggestionType = "Primary",
@@ -1083,6 +1087,7 @@ public class MedicalRecordsService : IMedicalRecordsService
             suggestion.RecentDoctors.Add(new DoctorSuggestionItem
             {
                 Id = record.AssignedDoctor.Id.ToString(),
+                UserId = record.AssignedDoctor.UserId.ToString(),
                 FullName = $"Dr. {record.AssignedDoctor.User.FirstName} {record.AssignedDoctor.User.LastName}",
                 Department = record.AssignedDoctor.Department?.Name ?? "General",
                 SuggestionType = "Recent",

@@ -99,6 +99,7 @@ try
     builder.Services.AddHostedService<AppointmentStatusWorker>();
     builder.Services.AddScoped<IDoctorStatisticsService, DoctorStatisticsService>();
     builder.Services.AddScoped<IPatientStatisticsService, PatientStatisticsService>();
+    builder.Services.AddScoped<IChatService, ChatService>(); // Real-time messaging
 
 
 
@@ -367,6 +368,7 @@ try
     app.MapGet("/api/ping", () => Results.Ok(new { message = "Backend is reachable!", time = DateTime.Now }));
     
     app.MapHub<SecureMedicalRecordSystem.API.Hubs.ScannerHub>("/hubs/scanner").RequireCors("AllowFrontend");
+    app.MapHub<SecureMedicalRecordSystem.API.Hubs.ChatHub>("/hubs/chat").RequireCors("AllowFrontend");
 
     // Ensure Storage directories exist
     Log.Information("Ensuring storage directories exist...");

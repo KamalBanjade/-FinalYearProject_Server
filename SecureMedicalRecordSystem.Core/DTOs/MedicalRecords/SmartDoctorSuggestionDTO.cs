@@ -20,6 +20,9 @@ public class DoctorSuggestionItem
     /// <summary>The Doctor entity Id (not UserId) — used as AssignedDoctorId on upload.</summary>
     public string Id { get; set; } = string.Empty;
 
+    /// <summary>The Identity User GUID string for messaging routing.</summary>
+    public string UserId { get; set; } = string.Empty;
+
     public string FullName { get; set; } = string.Empty;
     public string Department { get; set; } = string.Empty;
 

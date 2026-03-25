@@ -32,6 +32,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<MobileScannerPairing> MobileScannerPairings => Set<MobileScannerPairing>();
     public DbSet<ScanHistory> ScanHistories => Set<ScanHistory>();
     public DbSet<CommonLabUnit> CommonLabUnits => Set<CommonLabUnit>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<ChatConnection> ChatConnections => Set<ChatConnection>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -518,6 +520,70 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.MeasurementType);
             entity.HasIndex(e => e.Category);
+        });
+
+        // --------------------------------------------------------
+        // CHAT SYSTEM
+        // --------------------------------------------------------
+
+        // ChatMessage
+        modelBuilder.Entity<ChatMessage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            // Conversation retrieval index (bidirectional)
+            entity.HasIndex(e => new { e.SenderId, e.ReceiverId, e.SentAt })
+                  .HasDatabaseName("IX_ChatMessages_Conversation");
+
+            // Unread message inbox index
+            entity.HasIndex(e => new { e.ReceiverId, e.IsRead })
+                  .HasDatabaseName("IX_ChatMessages_Unread")
+                  .HasFilter("[IsRead] = 0");
+
+            entity.Property(e => e.MessageType).HasMaxLength(50).HasDefaultValue("Text");
+            entity.Property(e => e.SenderRole).HasMaxLength(20).IsRequired();
+            entity.Property(e => e.MessageText).IsRequired();
+            entity.Property(e => e.SentAt).HasDefaultValueSql("GETUTCDATE()");
+            entity.Property(e => e.IsRead).HasDefaultValue(false);
+            entity.Property(e => e.IsEdited).HasDefaultValue(false);
+
+            // FK: Sender (Restrict to avoid multiple cascade paths)
+            entity.HasOne(e => e.Sender)
+                  .WithMany()
+                  .HasForeignKey(e => e.SenderId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            // FK: Receiver (Restrict)
+            entity.HasOne(e => e.Receiver)
+                  .WithMany()
+                  .HasForeignKey(e => e.ReceiverId)
+                  .OnDelete(DeleteBehavior.Restrict);
+
+            // Optional FK: Related health record
+            entity.HasOne(e => e.RelatedHealthRecord)
+                  .WithMany()
+                  .HasForeignKey(e => e.RelatedHealthRecordId)
+                  .OnDelete(DeleteBehavior.SetNull)
+                  .IsRequired(false);
+        });
+
+        // ChatConnection (presence tracking)
+        modelBuilder.Entity<ChatConnection>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+
+            entity.HasIndex(e => new { e.UserId, e.IsActive })
+                  .HasDatabaseName("IX_ChatConnections_Active");
+
+            entity.Property(e => e.ConnectionId).HasMaxLength(200).IsRequired();
+            entity.Property(e => e.UserAgent).HasMaxLength(500);
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.ConnectedAt).HasDefaultValueSql("GETUTCDATE()");
+
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // --------------------------------------------------------

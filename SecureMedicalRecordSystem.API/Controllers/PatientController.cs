@@ -397,6 +397,7 @@ public class PatientController : ControllerBase
             .Select(d => new DoctorBasicInfoDTO
             {
                 Id = d.Id,
+                UserId = d.UserId,
                 FirstName = d.User.FirstName,
                 LastName = d.User.LastName,
                 ProfilePictureUrl = d.User.ProfilePictureUrl
