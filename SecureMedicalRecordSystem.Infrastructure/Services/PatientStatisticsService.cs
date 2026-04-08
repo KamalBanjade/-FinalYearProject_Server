@@ -66,9 +66,9 @@ public class PatientStatisticsService : IPatientStatisticsService
         {
             var ageInDays = (DateTime.UtcNow.Date - earliestRecord.Value.Date).TotalDays;
             
-            if (ageInDays <= 45) // Daily Mode (Show last 15 days as requested)
+            if (ageInDays <= 45) // Daily Mode (Show entire data from start)
             {
-                var startDate = DateTime.UtcNow.Date.AddDays(-14);
+                var startDate = earliestRecord.Value.Date;
                 var dailyData = await _context.MedicalRecords
                     .Where(r => r.PatientId == patientId && r.CreatedAt >= startDate)
                     .GroupBy(r => r.CreatedAt.Date)
@@ -84,7 +84,8 @@ public class PatientStatisticsService : IPatientStatisticsService
                     .ToListAsync();
 
                 int cT = 0, cC = 0, cP = 0, cD = 0, cE = 0, cA = 0;
-                for (int i = 0; i < 15; i++)
+                int daysCount = (int)(DateTime.UtcNow.Date - startDate).TotalDays;
+                for (int i = 0; i <= daysCount; i++)
                 {
                     var d = startDate.AddDays(i);
                     var m = dailyData.FirstOrDefault(x => x.Date == d);

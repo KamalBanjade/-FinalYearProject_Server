@@ -269,9 +269,9 @@ public class DoctorStatisticsService : IDoctorStatisticsService
         var trend = new List<RecordGrowthTrendDTO>();
 
         // 2. Select Resolution & Aggregation
-        if (ageInDays <= 45) // Daily Mode (Show last 15 days as requested)
+        if (ageInDays <= 45) // Daily Mode (Show entire data from start)
         {
-            var startDate = DateTime.UtcNow.Date.AddDays(-14);
+            var startDate = earliestRecord.Value.Date;
             var dailyData = await _context.MedicalRecords
                 .Where(r => r.AssignedDoctorId == doctorId && r.CreatedAt >= startDate)
                 .GroupBy(r => r.CreatedAt.Date)
@@ -287,7 +287,8 @@ public class DoctorStatisticsService : IDoctorStatisticsService
                 .ToListAsync();
 
             int cT = 0, cC = 0, cP = 0, cD = 0, cE = 0, cA = 0;
-            for (int i = 0; i < 15; i++)
+            int daysCount = (int)(DateTime.UtcNow.Date - startDate).TotalDays;
+            for (int i = 0; i <= daysCount; i++)
             {
                 var d = startDate.AddDays(i);
                 var m = dailyData.FirstOrDefault(x => x.Date == d);
