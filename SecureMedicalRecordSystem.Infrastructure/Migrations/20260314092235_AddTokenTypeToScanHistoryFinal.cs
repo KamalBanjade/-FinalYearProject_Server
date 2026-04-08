@@ -13,12 +13,12 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
             // The column was already added in a previous (now removed) migration attempt.
             // We skip AddColumn here to avoid 'column already exists' errors, but run the backfill.
             
-            // migrationBuilder.AddColumn<int>(
-            //    name: "TokenType",
-            //    table: "ScanHistories",
-            //    type: "int",
-            //    nullable: false,
-            //    defaultValue: 0);
+            migrationBuilder.AddColumn<int>(
+                name: "TokenType",
+                table: "ScanHistories",
+                type: "int",
+                nullable: false,
+                defaultValue: 0);
 
             // Backfill TokenType: 1 = Emergency, 0 = Normal
             migrationBuilder.Sql("UPDATE ScanHistories SET TokenType = 1 WHERE TOTPVerified = 1 AND AccessGranted = 1 AND TOTPVerifiedAt IS NULL");
