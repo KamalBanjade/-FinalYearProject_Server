@@ -34,6 +34,10 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<CommonLabUnit> CommonLabUnits => Set<CommonLabUnit>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<ChatConnection> ChatConnections => Set<ChatConnection>();
+    public DbSet<Prescription> Prescriptions => Set<Prescription>();
+    public DbSet<PatientVitalBaseline> PatientVitalBaselines => Set<PatientVitalBaseline>();
+    public DbSet<AnalysisReport> AnalysisReports => Set<AnalysisReport>();
+    public DbSet<StabilityAlert> StabilityAlerts => Set<StabilityAlert>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -70,6 +74,9 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         modelBuilder.Entity<Template>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<TemplateVersionHistory>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<CommonLabUnit>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<Prescription>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<PatientVitalBaseline>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<StabilityAlert>().HasQueryFilter(e => !e.IsDeleted);
 
         // AuditLog specific configurations
         modelBuilder.Entity<AuditLog>(entity =>
@@ -381,6 +388,52 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             // Precision for decimals
             entity.Property(e => e.NormalRangeMin).HasPrecision(18, 2);
             entity.Property(e => e.NormalRangeMax).HasPrecision(18, 2);
+        });
+
+        // Prescription
+        modelBuilder.Entity<Prescription>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.MedicationName).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Dosage).HasMaxLength(100);
+            entity.Property(e => e.Frequency).HasMaxLength(100);
+            entity.Property(e => e.Notes).HasMaxLength(500);
+            entity.HasOne(e => e.PatientHealthRecord)
+                  .WithMany(r => r.Prescriptions)
+                  .HasForeignKey(e => e.PatientHealthRecordId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // PatientVitalBaseline
+        modelBuilder.Entity<PatientVitalBaseline>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.PatientId).IsUnique(); // one baseline per patient
+        });
+
+        // AnalysisReport
+        modelBuilder.Entity<AnalysisReport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TigrisObjectKey).IsRequired().HasMaxLength(500);
+            entity.Property(e => e.ReportTitle).IsRequired().HasMaxLength(300);
+            entity.HasIndex(e => e.PatientId);
+            entity.HasIndex(e => e.GeneratedByDoctorId);
+            entity.HasQueryFilter(e => !e.IsDeleted);
+        });
+
+        modelBuilder.Entity<StabilityAlert>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.DoctorId);
+            entity.HasIndex(e => new { e.PatientId, e.TriggeredAt });
+            entity.Property(e => e.Quarter).IsRequired().HasMaxLength(20);
+            entity.Property(e => e.ScoreInterpretation).IsRequired().HasMaxLength(50);
+            entity.HasOne(e => e.Patient)
+                  .WithMany()
+                  .HasForeignKey(e => e.PatientId)
+                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasQueryFilter(e => !e.IsDeleted);
         });
 
         // Template

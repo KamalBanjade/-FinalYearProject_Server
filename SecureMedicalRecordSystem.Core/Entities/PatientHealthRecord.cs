@@ -63,4 +63,5 @@ public class PatientHealthRecord : BaseEntity
     public Appointment? Appointment { get; set; }
     public ICollection<HealthAttribute> CustomAttributes { get; set; } = new List<HealthAttribute>();
     public virtual Template? Template { get; set; }
+    public ICollection<Prescription> Prescriptions { get; set; } = new List<Prescription>();
 }

@@ -53,6 +53,9 @@ try
         {
             // Accept both string names ("Private") and integer values (0) for C# enums
             options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+            
+            // Allow Infinity and NaN to be serialized (useful for clinical trend edge cases)
+            options.JsonSerializerOptions.NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals;
         });
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSignalR();
@@ -88,6 +91,7 @@ try
     builder.Services.AddScoped<IHealthRecordService, HealthRecordService>();
     builder.Services.AddScoped<ITemplateService, TemplateService>();
     builder.Services.AddScoped<ILabUnitsService, LabUnitsService>();
+    builder.Services.AddScoped<IBackupService, BackupService>();
 
     // DI Registrations - Phase 4: QR Code System
     builder.Services.AddScoped<IQRTokenService, QRTokenService>();
@@ -100,6 +104,13 @@ try
     builder.Services.AddScoped<IDoctorStatisticsService, DoctorStatisticsService>();
     builder.Services.AddScoped<IPatientStatisticsService, PatientStatisticsService>();
     builder.Services.AddScoped<IChatService, ChatService>(); // Real-time messaging
+    builder.Services.AddScoped<IPrescriptionService, PrescriptionService>();
+    builder.Services.AddScoped<VitalBaselineService>();
+    builder.Services.AddScoped<IHealthAnalysisService, HealthAnalysisService>();
+    builder.Services.AddScoped<IAnalysisReportService, AnalysisReportService>();
+    builder.Services.AddScoped<INotificationService, SecureMedicalRecordSystem.API.Services.SignalRNotificationService>();
+    builder.Services.AddScoped<IStabilityAlertService, StabilityAlertService>();
+    builder.Services.AddHostedService<StabilityAlertWorker>();
 
 
 
@@ -110,6 +121,7 @@ try
     builder.Services.Configure<FileUploadSettings>(builder.Configuration.GetSection("FileUploadSettings"));
     builder.Services.Configure<MasterKeySettings>(builder.Configuration.GetSection("MasterKeySettings"));
     builder.Services.Configure<SecureMedicalRecordSystem.Core.Settings.CloudinarySettings>(builder.Configuration.GetSection("Cloudinary"));
+    builder.Services.Configure<SecureMedicalRecordSystem.Core.Settings.AnalysisSettings>(builder.Configuration.GetSection("AnalysisSettings"));
 
     // AWS/Tigris S3 Client Registration
     var tigrisSettings = builder.Configuration.GetSection("TigrisSettings").Get<TigrisSettings>();
@@ -320,6 +332,41 @@ try
                 Log.Information("Assigned new SecurityStamp to user: {Email}", u.Email);
             }
             Log.Information("SecurityStamp backfill complete. ({Count} fixed)", usersMissingStamps.Count);
+
+            // Backfill Prescriptions and Vital Baselines
+            try
+            {
+                Log.Information("Backfilling Prescriptions and Vital Baselines...");
+                var prescriptionService = services.GetRequiredService<IPrescriptionService>();
+                var baselineService = services.GetRequiredService<VitalBaselineService>();
+                
+                // Get all health records with TreatmentPlan
+                var recordsWithTreatmentPlan = await dbContext.PatientHealthRecords
+                    .Where(r => !string.IsNullOrEmpty(r.TreatmentPlan) && !r.IsDeleted)
+                    .ToListAsync();
+                    
+                foreach (var record in recordsWithTreatmentPlan)
+                {
+                    await prescriptionService.SeedPrescriptionsFromTreatmentPlanAsync(record.Id, record.TreatmentPlan!);
+                }
+                
+                // Get distinct patients who have health records
+                var distinctPatientsWithRecords = await dbContext.PatientHealthRecords
+                    .Where(r => !r.IsDeleted)
+                    .Select(r => r.PatientId)
+                    .Distinct()
+                    .ToListAsync();
+                    
+                foreach (var patientId in distinctPatientsWithRecords)
+                {
+                    await baselineService.RecalculateBaselineAsync(patientId);
+                }
+                Log.Information("Backfilling Prescriptions and Vital Baselines complete.");
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Failed to backfill Prescriptions and Vital Baselines.");
+            }
         }
         catch (Exception ex)
         {
@@ -369,6 +416,10 @@ try
     
     app.MapHub<SecureMedicalRecordSystem.API.Hubs.ScannerHub>("/hubs/scanner").RequireCors("AllowFrontend");
     app.MapHub<SecureMedicalRecordSystem.API.Hubs.ChatHub>("/hubs/chat").RequireCors("AllowFrontend");
+    app.MapHub<SecureMedicalRecordSystem.API.Hubs.NotificationHub>("/hubs/notifications").RequireCors("AllowFrontend");
+
+    // Setup QuestPDF License
+    QuestPDF.Settings.License = QuestPDF.Infrastructure.LicenseType.Community;
 
     // Ensure Storage directories exist
     Log.Information("Ensuring storage directories exist...");
