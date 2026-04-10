@@ -41,6 +41,7 @@ appsettings.*.json
 # Environment files
 appsettings.Production.json
 appsettings.Staging.json
+appsettings.json
 *.user
 *.suo
 .env
