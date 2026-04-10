@@ -300,7 +300,7 @@ public class HealthAnalysisService : IHealthAnalysisService
             if (record.CustomAttributes == null) continue;
 
             foreach (var attr in record.CustomAttributes
-                .Where(a => (int)a.FieldType == 0)) // Numeric only
+                .Where(a => (int)a.FieldType == 0 || (int)a.FieldType == 1)) // Numeric or parseable Text
             {
                 if (!double.TryParse(attr.FieldValue, 
                     System.Globalization.NumberStyles.Any,
