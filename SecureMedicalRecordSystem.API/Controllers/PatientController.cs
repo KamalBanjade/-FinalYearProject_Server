@@ -89,17 +89,25 @@ public class PatientController : ControllerBase
             return Unauthorized(ApiResponse.FailureResult("Invalid session."));
         }
 
-        var patient = await _context.Patients.FirstOrDefaultAsync(p => p.UserId == userId);
+        var patient = await _context.Patients
+            .Include(p => p.User)
+            .FirstOrDefaultAsync(p => p.UserId == userId);
         if (patient == null) return NotFound(ApiResponse.FailureResult("Patient profile not found."));
 
         try {
             if (!string.IsNullOrEmpty(updateDto.BloodType)) patient.BloodType = updateDto.BloodType;
             if (!string.IsNullOrEmpty(updateDto.Address)) patient.Address = updateDto.Address;
             if (!string.IsNullOrEmpty(updateDto.Occupation)) patient.Occupation = updateDto.Occupation;
+            if (!string.IsNullOrEmpty(updateDto.Gender)) patient.Gender = updateDto.Gender;
             if (!string.IsNullOrEmpty(updateDto.EmergencyContactName)) patient.EmergencyContactName = updateDto.EmergencyContactName;
             if (!string.IsNullOrEmpty(updateDto.EmergencyContactPhone)) patient.EmergencyContactPhone = updateDto.EmergencyContactPhone;
             if (!string.IsNullOrEmpty(updateDto.Allergies)) patient.Allergies = updateDto.Allergies;
             if (!string.IsNullOrEmpty(updateDto.ChronicConditions)) patient.ChronicConditions = updateDto.ChronicConditions;
+            if (updateDto.DateOfBirth.HasValue) patient.DateOfBirth = updateDto.DateOfBirth.Value;
+
+            if (patient.User != null && !string.IsNullOrEmpty(updateDto.PhoneNumber)) {
+                patient.User.PhoneNumber = updateDto.PhoneNumber;
+            }
 
             await _context.SaveChangesAsync();
             return Ok(ApiResponse.SuccessResult((object?)null, "Profile updated successfully."));

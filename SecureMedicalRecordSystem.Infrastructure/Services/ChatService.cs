@@ -24,11 +24,13 @@ public class ChatService : IChatService
 
     public async Task<MessageDTO> SendMessageAsync(Guid senderId, Guid receiverId, string senderRole, string messageText)
     {
+        var resolvedReceiverId = await ResolveUserIdAsync(receiverId) ?? receiverId;
+
         var message = new ChatMessage
         {
             Id = Guid.NewGuid(),
             SenderId = senderId,
-            ReceiverId = receiverId,
+            ReceiverId = resolvedReceiverId,
             SenderRole = senderRole,
             MessageText = messageText.Trim(),
             SentAt = DateTime.UtcNow,
@@ -57,11 +59,13 @@ public class ChatService : IChatService
 
     public async Task<List<MessageDTO>> GetConversationAsync(Guid userId, Guid otherUserId, int page = 1, int pageSize = 50)
     {
+        var resolvedOtherUserId = await ResolveUserIdAsync(otherUserId) ?? otherUserId;
+
         var messages = await _context.ChatMessages
             .IgnoreQueryFilters() // we apply our own IsDeleted check below
             .Where(m => !m.IsDeleted &&
-                        ((m.SenderId == userId && m.ReceiverId == otherUserId) ||
-                         (m.SenderId == otherUserId && m.ReceiverId == userId)))
+                        ((m.SenderId == userId && m.ReceiverId == resolvedOtherUserId) ||
+                         (m.SenderId == resolvedOtherUserId && m.ReceiverId == userId)))
             .OrderByDescending(m => m.SentAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
@@ -171,9 +175,11 @@ public class ChatService : IChatService
 
     public async Task<bool> DeleteConversationAsync(Guid currentUserId, Guid otherUserId)
     {
+        var resolvedOtherUserId = await ResolveUserIdAsync(otherUserId) ?? otherUserId;
+
         var messages = await _context.ChatMessages
-            .Where(m => (m.SenderId == currentUserId && m.ReceiverId == otherUserId) ||
-                        (m.SenderId == otherUserId && m.ReceiverId == currentUserId))
+            .Where(m => (m.SenderId == currentUserId && m.ReceiverId == resolvedOtherUserId) ||
+                        (m.SenderId == resolvedOtherUserId && m.ReceiverId == currentUserId))
             .ToListAsync();
 
         if (messages.Any())
@@ -195,18 +201,37 @@ public class ChatService : IChatService
             !Guid.TryParse(receiverId, out var receiverGuid))
             return false;
 
-        var sender = await _context.Users.FindAsync(senderGuid);
-        var receiver = await _context.Users.FindAsync(receiverGuid);
+        var resolvedSenderId = await ResolveUserIdAsync(senderGuid);
+        var resolvedReceiverId = await ResolveUserIdAsync(receiverGuid);
+
+        if (resolvedSenderId == null || resolvedReceiverId == null) return false;
+
+        var sender = await _context.Users.FindAsync(resolvedSenderId);
+        var receiver = await _context.Users.FindAsync(resolvedReceiverId);
 
         if (sender == null || receiver == null) return false;
 
-        // Must be a Doctor <-> Patient pair. 
-        // If a doctor is public in the directory (New Chat modal), any verified patient can message them
-        // to initiate contact or ask pre-appointment questions.
         bool isValidPair = (sender.Role == "Doctor" && receiver.Role == "Patient") ||
                            (sender.Role == "Patient" && receiver.Role == "Doctor");
                            
         return isValidPair;
+    }
+
+    private async Task<Guid?> ResolveUserIdAsync(Guid id)
+    {
+        // 1. Check if it's already a UserId
+        if (await _context.Users.AnyAsync(u => u.Id == id))
+            return id;
+
+        // 2. Check if it's a DoctorId
+        var doctor = await _context.Doctors.FirstOrDefaultAsync(d => d.Id == id);
+        if (doctor != null) return doctor.UserId;
+
+        // 3. Check if it's a PatientId
+        var patient = await _context.Patients.FirstOrDefaultAsync(p => p.Id == id);
+        if (patient != null) return patient.UserId;
+
+        return null;
     }
 
 
