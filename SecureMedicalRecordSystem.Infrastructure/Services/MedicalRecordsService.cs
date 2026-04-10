@@ -452,7 +452,8 @@ public class MedicalRecordsService : IMedicalRecordsService
             EmergencyContactRelationship = p.EmergencyContactRelationship,
             SharedRecordsCount = sharedStats.Count,
             AppointmentCount = await _context.Appointments.CountAsync(a => a.PatientId == p.Id && a.DoctorId == doctor.Id && !a.IsDeleted),
-            LatestSharedRecordDate = sharedStats.Any() ? sharedStats.Max() : null
+            LatestSharedRecordDate = sharedStats.Any() ? sharedStats.Max() : null,
+            ProfilePictureUrl = p.User?.ProfilePictureUrl
         };
 
         return (true, "Patient retrieved successfully.", result);
@@ -500,6 +501,7 @@ public class MedicalRecordsService : IMedicalRecordsService
                 EmergencyContactPhone = p.EmergencyContactPhone,
                 EmergencyContactRelationship = p.EmergencyContactRelationship,
                 IsPrimary = p.PrimaryDoctorId == doctor.Id,
+                ProfilePictureUrl = p.User != null ? p.User.ProfilePictureUrl : null,
                 SharedRecordsCount = _context.MedicalRecords.Count(r => r.PatientId == p.Id && r.AssignedDoctorId == doctor.Id && !r.IsDeleted),
                 AppointmentCount = _context.Appointments.Count(a => a.PatientId == p.Id && a.DoctorId == doctor.Id && !a.IsDeleted),
                 LatestSharedRecordDate = _context.MedicalRecords

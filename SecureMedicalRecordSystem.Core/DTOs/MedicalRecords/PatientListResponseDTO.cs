@@ -26,4 +26,5 @@ public class PatientListResponseDTO
     
     public DateTime? LastAppointmentDate { get; set; }
     public bool IsPrimary { get; set; }
+    public string? ProfilePictureUrl { get; set; }
 }
