@@ -29,7 +29,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 99,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"fasting glucose\", \"FBG\", \"FPG\"]",
-                Category        = "Diabetes Monitoring"
+                Category        = "Diabetes Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Blood Glucose (Postprandial)",
@@ -39,7 +40,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 139,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"2-hour postprandial\", \"PPG\", \"post-meal glucose\"]",
-                Category        = "Diabetes Monitoring"
+                Category        = "Diabetes Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Blood Glucose (Random)",
@@ -49,7 +51,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 200,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"random blood sugar\", \"RBS\"]",
-                Category        = "Diabetes Monitoring"
+                Category        = "Diabetes Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "HbA1c",
@@ -59,7 +62,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5.6m,
                 NormalRangeUnit = "%",
                 Aliases         = "[\"A1c\", \"glycated hemoglobin\", \"glycosylated hemoglobin\"]",
-                Category        = "Diabetes Monitoring"
+                Category        = "Diabetes Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Insulin Level (Fasting)",
@@ -69,7 +73,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 24.9m,
                 NormalRangeUnit = "µIU/mL",
                 Aliases         = "[\"fasting insulin\", \"serum insulin\"]",
-                Category        = "Diabetes Monitoring"
+                Category        = "Diabetes Monitoring",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "C-Peptide",
@@ -79,7 +84,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 2.0m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"connecting peptide\"]",
-                Category        = "Diabetes Monitoring"
+                Category        = "Diabetes Monitoring",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "HOMA-IR (Insulin Resistance Index)",
@@ -89,7 +95,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 2.5m,
                 NormalRangeUnit = "",
                 Aliases         = "[\"homeostatic model assessment\", \"insulin resistance\"]",
-                Category        = "Diabetes Monitoring"
+                Category        = "Diabetes Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Fructosamine",
@@ -99,7 +106,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 285,
                 NormalRangeUnit = "µmol/L",
                 Aliases         = "[\"glycated albumin\"]",
-                Category        = "Diabetes Monitoring"
+                Category        = "Diabetes Monitoring",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -116,7 +124,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 17.5m,
                 NormalRangeUnit = "g/dL",
                 Aliases         = "[\"Hgb\", \"Hb\"]",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "Hematocrit",
@@ -126,7 +135,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 50.0m,
                 NormalRangeUnit = "%",
                 Aliases         = "[\"Hct\", \"packed cell volume\", \"PCV\"]",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "RBC Count",
@@ -136,7 +146,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5.9m,
                 NormalRangeUnit = "x10⁶/µL",
                 Aliases         = "[\"red blood cell count\", \"erythrocyte count\"]",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "WBC Count",
@@ -146,7 +157,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 11.0m,
                 NormalRangeUnit = "x10³/µL",
                 Aliases         = "[\"white blood cell count\", \"leukocyte count\"]",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "Platelet Count",
@@ -156,7 +168,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 450,
                 NormalRangeUnit = "x10³/µL",
                 Aliases         = "[\"PLT\", \"thrombocyte count\"]",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "MCV (Mean Corpuscular Volume)",
@@ -166,7 +179,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 100,
                 NormalRangeUnit = "fL",
                 Aliases         = "[\"mean cell volume\"]",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "MCH (Mean Corpuscular Hemoglobin)",
@@ -176,7 +190,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 33,
                 NormalRangeUnit = "pg",
                 Aliases         = "[\"mean cell hemoglobin\"]",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "MCHC (Mean Corpuscular Hemoglobin Concentration)",
@@ -185,7 +200,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 33,
                 NormalRangeHigh = 36,
                 NormalRangeUnit = "g/dL",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "RDW (Red Cell Distribution Width)",
@@ -195,7 +211,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 14.5m,
                 NormalRangeUnit = "%",
                 Aliases         = "[\"red blood cell distribution width\"]",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Neutrophils (%)",
@@ -204,7 +221,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 50,
                 NormalRangeHigh = 70,
                 NormalRangeUnit = "%",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Lymphocytes (%)",
@@ -213,7 +231,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 20,
                 NormalRangeHigh = 40,
                 NormalRangeUnit = "%",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Monocytes (%)",
@@ -222,7 +241,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 2,
                 NormalRangeHigh = 8,
                 NormalRangeUnit = "%",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Eosinophils (%)",
@@ -231,7 +251,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 1,
                 NormalRangeHigh = 4,
                 NormalRangeUnit = "%",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Basophils (%)",
@@ -240,7 +261,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 0,
                 NormalRangeHigh = 1,
                 NormalRangeUnit = "%",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Reticulocyte Count",
@@ -250,7 +272,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 2.5m,
                 NormalRangeUnit = "%",
                 Aliases         = "[\"retic count\"]",
-                Category        = "Complete Blood Count"
+                Category        = "Complete Blood Count",
+                ImprovingDirection = "InRange"
             },
         });
 
@@ -266,7 +289,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 125,
                 NormalRangeHigh = 200,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Lipid Profile"
+                Category        = "Lipid Profile",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "HDL Cholesterol",
@@ -276,7 +300,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 60,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"good cholesterol\", \"high-density lipoprotein\"]",
-                Category        = "Lipid Profile"
+                Category        = "Lipid Profile",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "LDL Cholesterol",
@@ -286,7 +311,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 100,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"bad cholesterol\", \"low-density lipoprotein\"]",
-                Category        = "Lipid Profile"
+                Category        = "Lipid Profile",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Triglycerides",
@@ -296,7 +322,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 150,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"TG\", \"TRIG\"]",
-                Category        = "Lipid Profile"
+                Category        = "Lipid Profile",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "VLDL Cholesterol",
@@ -306,7 +333,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 30,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"very low-density lipoprotein\"]",
-                Category        = "Lipid Profile"
+                Category        = "Lipid Profile",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Non-HDL Cholesterol",
@@ -315,7 +343,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 0,
                 NormalRangeHigh = 130,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Lipid Profile"
+                Category        = "Lipid Profile",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Apolipoprotein A1",
@@ -325,7 +354,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 180,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"ApoA1\", \"Apo A-I\"]",
-                Category        = "Lipid Profile"
+                Category        = "Lipid Profile",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "Apolipoprotein B",
@@ -335,7 +365,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 109,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"ApoB\", \"Apo B-100\"]",
-                Category        = "Lipid Profile"
+                Category        = "Lipid Profile",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Lipoprotein(a)",
@@ -345,7 +376,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 30,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"Lp(a)\"]",
-                Category        = "Lipid Profile"
+                Category        = "Lipid Profile",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -362,7 +394,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 1.3m,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"serum creatinine\", \"SCr\"]",
-                Category        = "Kidney Function"
+                Category        = "Kidney Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "BUN (Blood Urea Nitrogen)",
@@ -372,7 +405,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 20,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"urea nitrogen\", \"serum urea\"]",
-                Category        = "Kidney Function"
+                Category        = "Kidney Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "BUN/Creatinine Ratio",
@@ -381,7 +415,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 10,
                 NormalRangeHigh = 20,
                 NormalRangeUnit = "",
-                Category        = "Kidney Function"
+                Category        = "Kidney Function",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "eGFR",
@@ -391,7 +426,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 120,
                 NormalRangeUnit = "mL/min/1.73m²",
                 Aliases         = "[\"glomerular filtration rate\", \"GFR\", \"CKD-EPI\"]",
-                Category        = "Kidney Function"
+                Category        = "Kidney Function",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "Urine Microalbumin",
@@ -401,7 +437,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 30,
                 NormalRangeUnit = "mg/g",
                 Aliases         = "[\"albumin-to-creatinine ratio\", \"ACR\", \"microalbuminuria\"]",
-                Category        = "Kidney Function"
+                Category        = "Kidney Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Cystatin C",
@@ -410,7 +447,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 0.62m,
                 NormalRangeHigh = 1.15m,
                 NormalRangeUnit = "mg/L",
-                Category        = "Kidney Function"
+                Category        = "Kidney Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "24-Hour Urine Protein",
@@ -420,7 +458,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 150,
                 NormalRangeUnit = "mg/24hr",
                 Aliases         = "[\"24h urine protein\", \"daily proteinuria\"]",
-                Category        = "Kidney Function"
+                Category        = "Kidney Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Uric Acid",
@@ -430,7 +469,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 7.2m,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"serum urate\", \"urate\"]",
-                Category        = "Kidney Function"
+                Category        = "Kidney Function",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -447,7 +487,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 55,
                 NormalRangeUnit = "U/L",
                 Aliases         = "[\"SGPT\", \"alanine transaminase\"]",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "AST (Aspartate Aminotransferase)",
@@ -457,7 +498,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 48,
                 NormalRangeUnit = "U/L",
                 Aliases         = "[\"SGOT\", \"aspartate transaminase\"]",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "ALP (Alkaline Phosphatase)",
@@ -466,7 +508,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 40,
                 NormalRangeHigh = 129,
                 NormalRangeUnit = "U/L",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "GGT (Gamma-Glutamyl Transferase)",
@@ -476,7 +519,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 61,
                 NormalRangeUnit = "U/L",
                 Aliases         = "[\"gamma-GT\", \"GGTP\"]",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Bilirubin (Total)",
@@ -485,7 +529,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 0.1m,
                 NormalRangeHigh = 1.2m,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Bilirubin (Direct / Conjugated)",
@@ -495,7 +540,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 0.3m,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"direct bilirubin\", \"conjugated bilirubin\"]",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Bilirubin (Indirect)",
@@ -504,7 +550,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 0.8m,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"indirect bilirubin\", \"unconjugated bilirubin\"]",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Albumin (Serum)",
@@ -514,7 +561,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5.4m,
                 NormalRangeUnit = "g/dL",
                 Aliases         = "[\"serum albumin\"]",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "Total Protein (Serum)",
@@ -523,7 +571,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 6.3m,
                 NormalRangeHigh = 8.2m,
                 NormalRangeUnit = "g/dL",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Prothrombin Time (PT)",
@@ -533,7 +582,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 13.5m,
                 NormalRangeUnit = "seconds",
                 Aliases         = "[\"PT\", \"clotting time\"]",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "INR (International Normalised Ratio)",
@@ -543,7 +593,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 1.1m,
                 NormalRangeUnit = "",
                 Aliases         = "[\"PT/INR\"]",
-                Category        = "Liver Function"
+                Category        = "Liver Function",
+                ImprovingDirection = "InRange"
             },
         });
 
@@ -560,7 +611,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 145,
                 NormalRangeUnit = "mEq/L",
                 Aliases         = "[\"Na\", \"Na+\", \"serum sodium\"]",
-                Category        = "Electrolytes"
+                Category        = "Electrolytes",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Potassium",
@@ -570,7 +622,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5.1m,
                 NormalRangeUnit = "mEq/L",
                 Aliases         = "[\"K\", \"K+\", \"serum potassium\"]",
-                Category        = "Electrolytes"
+                Category        = "Electrolytes",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Chloride",
@@ -580,7 +633,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 107,
                 NormalRangeUnit = "mEq/L",
                 Aliases         = "[\"Cl\", \"Cl-\"]",
-                Category        = "Electrolytes"
+                Category        = "Electrolytes",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Bicarbonate",
@@ -590,7 +644,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 29,
                 NormalRangeUnit = "mEq/L",
                 Aliases         = "[\"HCO3\", \"CO2 (total)\", \"serum bicarbonate\"]",
-                Category        = "Electrolytes"
+                Category        = "Electrolytes",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Calcium (Total)",
@@ -600,7 +655,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 10.2m,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"Ca\", \"total calcium\"]",
-                Category        = "Electrolytes"
+                Category        = "Electrolytes",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Calcium (Ionised)",
@@ -610,7 +666,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5.3m,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"free calcium\", \"ionized calcium\"]",
-                Category        = "Electrolytes"
+                Category        = "Electrolytes",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Magnesium",
@@ -620,7 +677,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 2.2m,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"Mg\", \"Mg2+\", \"serum magnesium\"]",
-                Category        = "Electrolytes"
+                Category        = "Electrolytes",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Phosphorus",
@@ -630,7 +688,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 4.5m,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"phosphate\", \"inorganic phosphate\", \"Pi\"]",
-                Category        = "Electrolytes"
+                Category        = "Electrolytes",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Anion Gap",
@@ -640,7 +699,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 16,
                 NormalRangeUnit = "mEq/L",
                 Aliases         = "[\"AG\"]",
-                Category        = "Electrolytes"
+                Category        = "Electrolytes",
+                ImprovingDirection = "InRange"
             },
         });
 
@@ -657,7 +717,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 4.5m,
                 NormalRangeUnit = "mIU/L",
                 Aliases         = "[\"thyrotropin\", \"thyroid stimulating hormone\"]",
-                Category        = "Thyroid Function"
+                Category        = "Thyroid Function",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Free T4 (fT4)",
@@ -667,7 +728,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 1.8m,
                 NormalRangeUnit = "ng/dL",
                 Aliases         = "[\"free thyroxine\", \"FT4\"]",
-                Category        = "Thyroid Function"
+                Category        = "Thyroid Function",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Free T3 (fT3)",
@@ -677,7 +739,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 4.2m,
                 NormalRangeUnit = "pg/mL",
                 Aliases         = "[\"free triiodothyronine\", \"FT3\"]",
-                Category        = "Thyroid Function"
+                Category        = "Thyroid Function",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Total T4",
@@ -687,7 +750,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 12.0m,
                 NormalRangeUnit = "µg/dL",
                 Aliases         = "[\"thyroxine\", \"T4 total\"]",
-                Category        = "Thyroid Function"
+                Category        = "Thyroid Function",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Total T3",
@@ -697,7 +761,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 200,
                 NormalRangeUnit = "ng/dL",
                 Aliases         = "[\"triiodothyronine\", \"T3 total\"]",
-                Category        = "Thyroid Function"
+                Category        = "Thyroid Function",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Anti-TPO Antibody",
@@ -706,7 +771,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 35,
                 NormalRangeUnit = "IU/mL",
                 Aliases         = "[\"thyroid peroxidase antibody\", \"TPOAb\"]",
-                Category        = "Thyroid Function"
+                Category        = "Thyroid Function",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Anti-Thyroglobulin Antibody",
@@ -715,7 +781,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 115,
                 NormalRangeUnit = "IU/mL",
                 Aliases         = "[\"TgAb\", \"thyroglobulin antibody\"]",
-                Category        = "Thyroid Function"
+                Category        = "Thyroid Function",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -732,7 +799,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 0.04m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"cTnI\", \"cardiac troponin I\"]",
-                Category        = "Cardiac Markers"
+                Category        = "Cardiac Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Troponin T (High-Sensitivity)",
@@ -741,7 +809,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 14,
                 NormalRangeUnit = "ng/L",
                 Aliases         = "[\"hsTnT\", \"hs-TnT\", \"high-sensitivity troponin T\"]",
-                Category        = "Cardiac Markers"
+                Category        = "Cardiac Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "BNP (B-type Natriuretic Peptide)",
@@ -750,7 +819,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 100,
                 NormalRangeUnit = "pg/mL",
                 Aliases         = "[\"brain natriuretic peptide\"]",
-                Category        = "Cardiac Markers"
+                Category        = "Cardiac Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "NT-proBNP",
@@ -759,7 +829,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 125,
                 NormalRangeUnit = "pg/mL",
                 Aliases         = "[\"N-terminal pro-BNP\", \"proBNP\"]",
-                Category        = "Cardiac Markers"
+                Category        = "Cardiac Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "CK-MB (Creatine Kinase-MB)",
@@ -768,7 +839,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5.0m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"creatine kinase MB\", \"CK-MB fraction\"]",
-                Category        = "Cardiac Markers"
+                Category        = "Cardiac Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "CK (Total Creatine Kinase)",
@@ -778,7 +850,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 200,
                 NormalRangeUnit = "U/L",
                 Aliases         = "[\"CPK\", \"total CK\", \"creatine phosphokinase\"]",
-                Category        = "Cardiac Markers"
+                Category        = "Cardiac Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Myoglobin",
@@ -787,7 +860,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 25,
                 NormalRangeHigh = 72,
                 NormalRangeUnit = "ng/mL",
-                Category        = "Cardiac Markers"
+                Category        = "Cardiac Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "LDH (Lactate Dehydrogenase)",
@@ -797,7 +871,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 280,
                 NormalRangeUnit = "U/L",
                 Aliases         = "[\"lactate dehydrogenase\", \"LD\"]",
-                Category        = "Cardiac Markers"
+                Category        = "Cardiac Markers",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -813,7 +888,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 3.0m,
                 NormalRangeUnit = "mg/L",
                 Aliases         = "[\"C-reactive protein\"]",
-                Category        = "Inflammation & Infection"
+                Category        = "Inflammation & Infection",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "hs-CRP (High-Sensitivity CRP)",
@@ -822,7 +898,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 1.0m,
                 NormalRangeUnit = "mg/L",
                 Aliases         = "[\"high sensitivity CRP\", \"hsCRP\"]",
-                Category        = "Inflammation & Infection"
+                Category        = "Inflammation & Infection",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "ESR (Erythrocyte Sedimentation Rate)",
@@ -832,7 +909,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 20,
                 NormalRangeUnit = "mm/hr",
                 Aliases         = "[\"sedimentation rate\", \"sed rate\", \"Westergren\"]",
-                Category        = "Inflammation & Infection"
+                Category        = "Inflammation & Infection",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Procalcitonin (PCT)",
@@ -841,7 +919,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 0.1m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"PCT\", \"procalcitonin\"]",
-                Category        = "Inflammation & Infection"
+                Category        = "Inflammation & Infection",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Ferritin",
@@ -851,7 +930,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 500,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"serum ferritin\"]",
-                Category        = "Inflammation & Infection"
+                Category        = "Inflammation & Infection",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Fibrinogen",
@@ -861,7 +941,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 400,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"plasma fibrinogen\", \"clotting factor I\"]",
-                Category        = "Inflammation & Infection"
+                Category        = "Inflammation & Infection",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "IL-6 (Interleukin-6)",
@@ -870,7 +951,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 7,
                 NormalRangeUnit = "pg/mL",
                 Aliases         = "[\"interleukin 6\", \"IL6\"]",
-                Category        = "Inflammation & Infection"
+                Category        = "Inflammation & Infection",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -887,7 +969,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 100,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"25-OH Vitamin D\", \"calcidiol\", \"cholecalciferol\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Vitamin B12 (Cobalamin)",
@@ -897,7 +980,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 900,
                 NormalRangeUnit = "pg/mL",
                 Aliases         = "[\"cobalamin\", \"cyanocobalamin\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Folate (Folic Acid)",
@@ -907,7 +991,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 17.0m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"folic acid\", \"serum folate\", \"vitamin B9\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Vitamin B1 (Thiamine)",
@@ -917,7 +1002,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 180,
                 NormalRangeUnit = "nmol/L",
                 Aliases         = "[\"thiamine\", \"aneurin\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Vitamin C (Ascorbic Acid)",
@@ -927,7 +1013,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 2.0m,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"ascorbate\", \"ascorbic acid\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Iron (Serum)",
@@ -937,7 +1024,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 170,
                 NormalRangeUnit = "µg/dL",
                 Aliases         = "[\"serum iron\", \"Fe\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "TIBC (Total Iron Binding Capacity)",
@@ -947,7 +1035,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 370,
                 NormalRangeUnit = "µg/dL",
                 Aliases         = "[\"total iron binding capacity\", \"transferrin capacity\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Transferrin Saturation",
@@ -957,7 +1046,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 50,
                 NormalRangeUnit = "%",
                 Aliases         = "[\"iron saturation\", \"Tsat\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "Zinc",
@@ -967,7 +1057,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 120,
                 NormalRangeUnit = "µg/dL",
                 Aliases         = "[\"serum zinc\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "Copper",
@@ -977,7 +1068,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 140,
                 NormalRangeUnit = "µg/dL",
                 Aliases         = "[\"serum copper\", \"Cu\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "Selenium",
@@ -987,7 +1079,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 150,
                 NormalRangeUnit = "µg/L",
                 Aliases         = "[\"serum selenium\", \"Se\"]",
-                Category        = "Vitamins & Minerals"
+                Category        = "Vitamins & Minerals",
+                ImprovingDirection = "Higher"
             },
         });
 
@@ -1003,7 +1096,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 1.005m,
                 NormalRangeHigh = 1.030m,
                 NormalRangeUnit = "",
-                Category        = "Urinalysis"
+                Category        = "Urinalysis",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Urine pH",
@@ -1012,7 +1106,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 4.5m,
                 NormalRangeHigh = 8.0m,
                 NormalRangeUnit = "",
-                Category        = "Urinalysis"
+                Category        = "Urinalysis",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Urine Protein",
@@ -1021,7 +1116,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 30,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"dipstick protein\", \"urine albumin dipstick\"]",
-                Category        = "Urinalysis"
+                Category        = "Urinalysis",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Urine Glucose",
@@ -1030,7 +1126,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 15,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"glucosuria\"]",
-                Category        = "Urinalysis"
+                Category        = "Urinalysis",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Urine Ketones",
@@ -1039,7 +1136,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"ketonuria\", \"urine acetone\"]",
-                Category        = "Urinalysis"
+                Category        = "Urinalysis",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Urine RBC (Microscopy)",
@@ -1048,7 +1146,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5,
                 NormalRangeUnit = "/HPF",
                 Aliases         = "[\"urine red blood cells\", \"hematuria\"]",
-                Category        = "Urinalysis"
+                Category        = "Urinalysis",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Urine WBC (Microscopy)",
@@ -1057,7 +1156,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5,
                 NormalRangeUnit = "/HPF",
                 Aliases         = "[\"urine white blood cells\", \"pyuria\"]",
-                Category        = "Urinalysis"
+                Category        = "Urinalysis",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Urine Creatinine",
@@ -1066,7 +1166,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 40,
                 NormalRangeHigh = 300,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Urinalysis"
+                Category        = "Urinalysis",
+                ImprovingDirection = "InRange"
             },
         });
 
@@ -1083,7 +1184,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 35,
                 NormalRangeUnit = "seconds",
                 Aliases         = "[\"partial thromboplastin time\", \"PTT\"]",
-                Category        = "Coagulation"
+                Category        = "Coagulation",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "D-Dimer",
@@ -1092,7 +1194,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 500,
                 NormalRangeUnit = "ng/mL FEU",
                 Aliases         = "[\"fibrin degradation product\", \"FDP\"]",
-                Category        = "Coagulation"
+                Category        = "Coagulation",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Fibrinogen",
@@ -1101,7 +1204,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 200,
                 NormalRangeHigh = 400,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Coagulation"
+                Category        = "Coagulation",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Bleeding Time",
@@ -1110,7 +1214,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 2,
                 NormalRangeHigh = 7,
                 NormalRangeUnit = "minutes",
-                Category        = "Coagulation"
+                Category        = "Coagulation",
+                ImprovingDirection = "InRange"
             },
         });
 
@@ -1127,7 +1232,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 23,
                 NormalRangeUnit = "µg/dL",
                 Aliases         = "[\"serum cortisol\", \"hydrocortisone\", \"8am cortisol\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "ACTH (Adrenocorticotropic Hormone)",
@@ -1137,7 +1243,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 63,
                 NormalRangeUnit = "pg/mL",
                 Aliases         = "[\"corticotropin\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Growth Hormone (GH)",
@@ -1146,7 +1253,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 3.0m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"somatotropin\", \"HGH\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "IGF-1 (Insulin-like Growth Factor 1)",
@@ -1156,7 +1264,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 300,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"somatomedin C\", \"IGF1\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Prolactin",
@@ -1166,7 +1275,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 18,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"PRL\", \"lactotropin\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "FSH (Follicle Stimulating Hormone)",
@@ -1176,7 +1286,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 12.4m,
                 NormalRangeUnit = "mIU/mL",
                 Aliases         = "[\"follitropin\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "LH (Luteinizing Hormone)",
@@ -1186,7 +1297,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 8.6m,
                 NormalRangeUnit = "mIU/mL",
                 Aliases         = "[\"lutropin\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Testosterone (Total)",
@@ -1196,7 +1308,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 1000,
                 NormalRangeUnit = "ng/dL",
                 Aliases         = "[\"serum testosterone\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Estradiol (E2)",
@@ -1206,7 +1319,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 350,
                 NormalRangeUnit = "pg/mL",
                 Aliases         = "[\"oestradiol\", \"E2\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Progesterone",
@@ -1216,7 +1330,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 25.0m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"serum progesterone\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "DHEA-S",
@@ -1226,7 +1341,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 560,
                 NormalRangeUnit = "µg/dL",
                 Aliases         = "[\"dehydroepiandrosterone sulfate\", \"DHEA-SO4\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Aldosterone",
@@ -1235,7 +1351,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 1,
                 NormalRangeHigh = 21,
                 NormalRangeUnit = "ng/dL",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Renin Activity (Plasma)",
@@ -1245,7 +1362,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 4.0m,
                 NormalRangeUnit = "ng/mL/hr",
                 Aliases         = "[\"PRA\", \"plasma renin activity\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "PTH (Parathyroid Hormone)",
@@ -1255,7 +1373,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 68,
                 NormalRangeUnit = "pg/mL",
                 Aliases         = "[\"parathyroid hormone\", \"iPTH\", \"intact PTH\"]",
-                Category        = "Hormones & Endocrinology"
+                Category        = "Hormones & Endocrinology",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -1271,7 +1390,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 4.0m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"prostate specific antigen\", \"total PSA\"]",
-                Category        = "Tumour Markers"
+                Category        = "Tumour Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "CEA (Carcinoembryonic Antigen)",
@@ -1280,7 +1400,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 2.5m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"carcinoembryonic antigen\"]",
-                Category        = "Tumour Markers"
+                Category        = "Tumour Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "AFP (Alpha-Fetoprotein)",
@@ -1289,7 +1410,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 8.5m,
                 NormalRangeUnit = "ng/mL",
                 Aliases         = "[\"alpha fetoprotein\"]",
-                Category        = "Tumour Markers"
+                Category        = "Tumour Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "CA-125",
@@ -1298,7 +1420,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 35,
                 NormalRangeUnit = "U/mL",
                 Aliases         = "[\"cancer antigen 125\", \"ovarian cancer marker\"]",
-                Category        = "Tumour Markers"
+                Category        = "Tumour Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "CA 19-9",
@@ -1307,7 +1430,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 37,
                 NormalRangeUnit = "U/mL",
                 Aliases         = "[\"cancer antigen 19-9\", \"pancreatic marker\"]",
-                Category        = "Tumour Markers"
+                Category        = "Tumour Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "CA 15-3",
@@ -1316,7 +1440,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 30,
                 NormalRangeUnit = "U/mL",
                 Aliases         = "[\"cancer antigen 15-3\", \"breast cancer marker\"]",
-                Category        = "Tumour Markers"
+                Category        = "Tumour Markers",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Beta-HCG",
@@ -1326,7 +1451,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 5,
                 NormalRangeUnit = "mIU/mL",
                 Aliases         = "[\"human chorionic gonadotropin\", \"hCG\", \"pregnancy hormone\"]",
-                Category        = "Tumour Markers"
+                Category        = "Tumour Markers",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -1342,7 +1468,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 80,
                 NormalRangeUnit = "titer",
                 Aliases         = "[\"antinuclear antibodies\", \"FANA\"]",
-                Category        = "Autoimmune & Immunology"
+                Category        = "Autoimmune & Immunology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Rheumatoid Factor (RF)",
@@ -1351,7 +1478,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 20,
                 NormalRangeUnit = "IU/mL",
                 Aliases         = "[\"RA factor\"]",
-                Category        = "Autoimmune & Immunology"
+                Category        = "Autoimmune & Immunology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Anti-CCP (Anti-Cyclic Citrullinated Peptide)",
@@ -1360,7 +1488,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 20,
                 NormalRangeUnit = "U/mL",
                 Aliases         = "[\"anti-CCP antibody\", \"ACPA\"]",
-                Category        = "Autoimmune & Immunology"
+                Category        = "Autoimmune & Immunology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Complement C3",
@@ -1369,7 +1498,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 90,
                 NormalRangeHigh = 180,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Autoimmune & Immunology"
+                Category        = "Autoimmune & Immunology",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Complement C4",
@@ -1378,7 +1508,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 16,
                 NormalRangeHigh = 47,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Autoimmune & Immunology"
+                Category        = "Autoimmune & Immunology",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "IgG (Immunoglobulin G)",
@@ -1387,7 +1518,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 700,
                 NormalRangeHigh = 1600,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Autoimmune & Immunology"
+                Category        = "Autoimmune & Immunology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "IgA (Immunoglobulin A)",
@@ -1396,7 +1528,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 70,
                 NormalRangeHigh = 400,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Autoimmune & Immunology"
+                Category        = "Autoimmune & Immunology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "IgM (Immunoglobulin M)",
@@ -1405,7 +1538,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 40,
                 NormalRangeHigh = 230,
                 NormalRangeUnit = "mg/dL",
-                Category        = "Autoimmune & Immunology"
+                Category        = "Autoimmune & Immunology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "IgE (Total)",
@@ -1414,7 +1548,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 100,
                 NormalRangeUnit = "IU/mL",
                 Aliases         = "[\"total IgE\", \"atopy marker\"]",
-                Category        = "Autoimmune & Immunology"
+                Category        = "Autoimmune & Immunology",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -1429,7 +1564,8 @@ public static class MasterDataSeeder
                 DefaultUnit     = "Reactive/NR",
                 NormalRangeUnit = "",
                 Aliases         = "[\"HBsAg\", \"hepatitis B antigen\"]",
-                Category        = "Infectious Disease"
+                Category        = "Infectious Disease",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Anti-HCV (Hepatitis C Antibody)",
@@ -1437,7 +1573,8 @@ public static class MasterDataSeeder
                 DefaultUnit     = "Reactive/NR",
                 NormalRangeUnit = "",
                 Aliases         = "[\"HCV antibody\", \"hepatitis C\"]",
-                Category        = "Infectious Disease"
+                Category        = "Infectious Disease",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "HIV Ag/Ab Combo",
@@ -1445,7 +1582,8 @@ public static class MasterDataSeeder
                 DefaultUnit     = "Reactive/NR",
                 NormalRangeUnit = "",
                 Aliases         = "[\"HIV test\", \"HIV-1/2\", \"fourth-generation HIV test\"]",
-                Category        = "Infectious Disease"
+                Category        = "Infectious Disease",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "CD4 Count",
@@ -1455,7 +1593,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 1500,
                 NormalRangeUnit = "cells/µL",
                 Aliases         = "[\"T-helper cells\", \"CD4+ T cells\"]",
-                Category        = "Infectious Disease"
+                Category        = "Infectious Disease",
+                ImprovingDirection = "Higher"
             },
             new CommonLabUnit {
                 MeasurementType = "Widal Test (Typhoid)",
@@ -1464,7 +1603,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 80,
                 NormalRangeUnit = "titer",
                 Aliases         = "[\"S. typhi O/H titer\"]",
-                Category        = "Infectious Disease"
+                Category        = "Infectious Disease",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Dengue NS1 Antigen",
@@ -1472,7 +1612,8 @@ public static class MasterDataSeeder
                 DefaultUnit     = "Positive/Negative",
                 NormalRangeUnit = "",
                 Aliases         = "[\"NS1\", \"dengue antigen\"]",
-                Category        = "Infectious Disease"
+                Category        = "Infectious Disease",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -1489,7 +1630,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 120,
                 NormalRangeUnit = "mmHg",
                 Aliases         = "[\"SBP\", \"systolic BP\", \"upper BP\"]",
-                Category        = "Vital Signs"
+                Category        = "Vital Signs",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Diastolic Blood Pressure",
@@ -1499,7 +1641,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 80,
                 NormalRangeUnit = "mmHg",
                 Aliases         = "[\"DBP\", \"diastolic BP\", \"lower BP\"]",
-                Category        = "Vital Signs"
+                Category        = "Vital Signs",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Heart Rate",
@@ -1509,7 +1652,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 100,
                 NormalRangeUnit = "bpm",
                 Aliases         = "[\"pulse\", \"pulse rate\", \"HR\"]",
-                Category        = "Vital Signs"
+                Category        = "Vital Signs",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "SpO2 (Oxygen Saturation)",
@@ -1519,7 +1663,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 100,
                 NormalRangeUnit = "%",
                 Aliases         = "[\"oxygen saturation\", \"pulse oximetry\", \"SaO2\"]",
-                Category        = "Vital Signs"
+                Category        = "Vital Signs",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Body Temperature",
@@ -1529,7 +1674,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 37.2m,
                 NormalRangeUnit = "°C",
                 Aliases         = "[\"temperature\", \"core temp\"]",
-                Category        = "Vital Signs"
+                Category        = "Vital Signs",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "BMI (Body Mass Index)",
@@ -1539,7 +1685,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 24.9m,
                 NormalRangeUnit = "kg/m²",
                 Aliases         = "[\"body mass index\"]",
-                Category        = "Vital Signs"
+                Category        = "Vital Signs",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Weight",
@@ -1547,7 +1694,8 @@ public static class MasterDataSeeder
                 DefaultUnit     = "kg",
                 NormalRangeUnit = "kg",
                 Aliases         = "[\"body weight\"]",
-                Category        = "Vital Signs"
+                Category        = "Vital Signs",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Waist Circumference",
@@ -1556,7 +1704,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 94,
                 NormalRangeUnit = "cm",
                 Aliases         = "[\"abdominal circumference\", \"waist measurement\"]",
-                Category        = "Vital Signs"
+                Category        = "Vital Signs",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Respiratory Rate",
@@ -1566,7 +1715,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 20,
                 NormalRangeUnit = "breaths/min",
                 Aliases         = "[\"RR\", \"breathing rate\"]",
-                Category        = "Vital Signs"
+                Category        = "Vital Signs",
+                ImprovingDirection = "InRange"
             },
         });
 
@@ -1583,7 +1733,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 7.45m,
                 NormalRangeUnit = "",
                 Aliases         = "[\"arterial pH\", \"serum pH\"]",
-                Category        = "Arterial Blood Gas"
+                Category        = "Arterial Blood Gas",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "PaO2 (Arterial Oxygen Pressure)",
@@ -1593,7 +1744,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 100,
                 NormalRangeUnit = "mmHg",
                 Aliases         = "[\"partial pressure of oxygen\"]",
-                Category        = "Arterial Blood Gas"
+                Category        = "Arterial Blood Gas",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "PaCO2 (Arterial CO2 Pressure)",
@@ -1603,7 +1755,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 45,
                 NormalRangeUnit = "mmHg",
                 Aliases         = "[\"partial pressure of CO2\"]",
-                Category        = "Arterial Blood Gas"
+                Category        = "Arterial Blood Gas",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Base Excess",
@@ -1613,7 +1766,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 2,
                 NormalRangeUnit = "mEq/L",
                 Aliases         = "[\"BE\"]",
-                Category        = "Arterial Blood Gas"
+                Category        = "Arterial Blood Gas",
+                ImprovingDirection = "InRange"
             },
             new CommonLabUnit {
                 MeasurementType = "Lactate (Blood)",
@@ -1623,7 +1777,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 2.0m,
                 NormalRangeUnit = "mmol/L",
                 Aliases         = "[\"serum lactate\", \"lactic acid\"]",
-                Category        = "Arterial Blood Gas"
+                Category        = "Arterial Blood Gas",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -1640,7 +1795,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 110,
                 NormalRangeUnit = "U/L",
                 Aliases         = "[\"serum amylase\", \"pancreatic amylase\"]",
-                Category        = "Pancreatic & GI"
+                Category        = "Pancreatic & GI",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Lipase",
@@ -1650,7 +1806,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 60,
                 NormalRangeUnit = "U/L",
                 Aliases         = "[\"serum lipase\"]",
-                Category        = "Pancreatic & GI"
+                Category        = "Pancreatic & GI",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "H. pylori Antigen (Stool)",
@@ -1658,7 +1815,8 @@ public static class MasterDataSeeder
                 DefaultUnit     = "Positive/Negative",
                 NormalRangeUnit = "",
                 Aliases         = "[\"H pylori\", \"Helicobacter pylori\"]",
-                Category        = "Pancreatic & GI"
+                Category        = "Pancreatic & GI",
+                ImprovingDirection = "Lower"
             },
         });
 
@@ -1675,7 +1833,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 80,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"cerebrospinal fluid glucose\", \"CSF sugar\"]",
-                Category        = "Neurology"
+                Category        = "Neurology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "CSF Protein",
@@ -1685,7 +1844,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 45,
                 NormalRangeUnit = "mg/dL",
                 Aliases         = "[\"cerebrospinal fluid protein\"]",
-                Category        = "Neurology"
+                Category        = "Neurology",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Homocysteine",
@@ -1695,7 +1855,8 @@ public static class MasterDataSeeder
                 NormalRangeHigh = 15,
                 NormalRangeUnit = "µmol/L",
                 Aliases         = "[\"total homocysteine\", \"tHcy\"]",
-                Category        = "Neurology"
+                Category        = "Neurology",
+                ImprovingDirection = "Lower"
             },
         });
         
@@ -1711,7 +1872,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 1,
                 NormalRangeHigh = 10,
                 NormalRangeUnit = "Score",
-                Category        = "Symptom Monitoring"
+                Category        = "Symptom Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Fatigue Score (1-10)",
@@ -1720,7 +1882,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 1,
                 NormalRangeHigh = 10,
                 NormalRangeUnit = "Score",
-                Category        = "Symptom Monitoring"
+                Category        = "Symptom Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Vision Blurring Score (1-10)",
@@ -1729,7 +1892,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 1,
                 NormalRangeHigh = 10,
                 NormalRangeUnit = "Score",
-                Category        = "Symptom Monitoring"
+                Category        = "Symptom Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Foot Tingling Score (1-10)",
@@ -1738,7 +1902,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 1,
                 NormalRangeHigh = 10,
                 NormalRangeUnit = "Score",
-                Category        = "Symptom Monitoring"
+                Category        = "Symptom Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Diet Compliance Score (0-10)",
@@ -1747,7 +1912,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 0,
                 NormalRangeHigh = 10,
                 NormalRangeUnit = "Score",
-                Category        = "Management Adherence"
+                Category        = "Management Adherence",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Medication Adherence (%)",
@@ -1756,7 +1922,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 0,
                 NormalRangeHigh = 100,
                 NormalRangeUnit = "%",
-                Category        = "Management Adherence"
+                Category        = "Management Adherence",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Polyuria Frequency (times/day)",
@@ -1765,7 +1932,8 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 0,
                 NormalRangeHigh = 10,
                 NormalRangeUnit = "times/day",
-                Category        = "Symptom Monitoring"
+                Category        = "Symptom Monitoring",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Exercise Duration (min/day)",
@@ -1774,28 +1942,32 @@ public static class MasterDataSeeder
                 NormalRangeLow  = 0,
                 NormalRangeHigh = 150,
                 NormalRangeUnit = "min/day",
-                Category        = "Management Adherence"
+                Category        = "Management Adherence",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Clinical Stage",
                 CommonUnits     = "[\"Category\"]",
                 DefaultUnit     = "Category",
                 NormalRangeUnit = "",
-                Category        = "Clinical Assessment"
+                Category        = "Clinical Assessment",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Final Diagnosis",
                 CommonUnits     = "[\"Clinical Note\"]",
                 DefaultUnit     = "Clinical Note",
                 NormalRangeUnit = "",
-                Category        = "Clinical Assessment"
+                Category        = "Clinical Assessment",
+                ImprovingDirection = "Lower"
             },
             new CommonLabUnit {
                 MeasurementType = "Management Plan",
                 CommonUnits     = "[\"Clinical Note\"]",
                 DefaultUnit     = "Clinical Note",
                 NormalRangeUnit = "",
-                Category        = "Clinical Assessment"
+                Category        = "Clinical Assessment",
+                ImprovingDirection = "Lower"
             },
         });
 

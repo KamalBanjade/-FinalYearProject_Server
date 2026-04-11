@@ -1054,19 +1054,29 @@ public class HealthRecordService : IHealthRecordService
 
     private List<string> ExtractMedications(IEnumerable<string?> texts)
     {
-        // Patterns for common medication mentions (Simplified)
-        var medDictionary = new[] { "metformin", "amlodipine", "atorvastatin", "lisinopril", "insulin", "paracetamol", "ibuprofen" };
-        var found = new HashSet<string>();
-        
+        // Medication extraction is now handled by PrescriptionService.ExtractMedicationsFromDbAsync()
+        // This method is retained only for the AI export summary (medications_prescribed field).
+        // It uses a broad keyword guess from treatment plan text — not canonical names.
+        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var text in texts.Where(t => !string.IsNullOrEmpty(t)))
         {
-            var lowerText = text!.ToLower();
-            foreach (var med in medDictionary)
+            var words = text!.Split(new[] { ' ', ',', '.', ';', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var word in words)
             {
-                if (lowerText.Contains(med)) found.Add(med);
+                // Heuristic: likely a medication if it ends in common drug suffixes
+                var w = word.Trim().ToLower();
+                if (w.Length > 5 && (
+                    w.EndsWith("pril") || w.EndsWith("sartan") || w.EndsWith("olol") ||
+                    w.EndsWith("statin") || w.EndsWith("flozin") || w.EndsWith("glutide") ||
+                    w.EndsWith("mide") || w.EndsWith("oxacin") || w.EndsWith("mycin") ||
+                    w.EndsWith("cycline") || w.EndsWith("prazole") || w.EndsWith("formin")))
+                {
+                    found.Add(word.Trim());
+                }
             }
         }
-        
+
         return found.ToList();
     }
 

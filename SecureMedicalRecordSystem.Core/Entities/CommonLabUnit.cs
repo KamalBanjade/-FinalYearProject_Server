@@ -25,4 +25,7 @@ public class CommonLabUnit : BaseEntity
 
     [MaxLength(50)]
     public string? Category { get; set; }
+
+    [MaxLength(20)]
+    public string ImprovingDirection { get; set; } = "Lower";
 }

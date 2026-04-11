@@ -37,7 +37,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<Prescription> Prescriptions => Set<Prescription>();
     public DbSet<PatientVitalBaseline> PatientVitalBaselines => Set<PatientVitalBaseline>();
     public DbSet<AnalysisReport> AnalysisReports => Set<AnalysisReport>();
-    public DbSet<StabilityAlert> StabilityAlerts => Set<StabilityAlert>();
+    public DbSet<StabilityAlert> StabilityAlerts { get; set; }
+    public DbSet<MasterMedication> MasterMedications { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -573,6 +574,15 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.MeasurementType);
             entity.HasIndex(e => e.Category);
+        });
+
+        // MasterMedication configurations
+        modelBuilder.Entity<MasterMedication>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Name).IsUnique();
+            entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.DrugCategory).IsRequired().HasMaxLength(100);
         });
 
         // --------------------------------------------------------

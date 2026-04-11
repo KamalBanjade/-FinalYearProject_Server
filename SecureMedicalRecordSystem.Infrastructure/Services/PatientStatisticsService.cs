@@ -20,6 +20,7 @@ public class PatientStatisticsService : IPatientStatisticsService
     public async Task<PatientStatisticsDTO> GetDashboardStatisticsAsync(Guid userId)
     {
         var patient = await _context.Patients
+            .AsNoTracking()
             .Include(p => p.User)
             .FirstOrDefaultAsync(p => p.UserId == userId);
 
@@ -28,35 +29,50 @@ public class PatientStatisticsService : IPatientStatisticsService
         var patientId = patient.Id;
         var today = DateTime.UtcNow.Date;
 
-        // 1. Basic Stats
-        var totalRecords = await _context.MedicalRecords.CountAsync(r => r.PatientId == patientId);
-        var certifiedRecords = await _context.MedicalRecords.CountAsync(r => r.PatientId == patientId && r.State == RecordState.Certified);
-        var pendingRecords = await _context.MedicalRecords.CountAsync(r => r.PatientId == patientId && (r.State == RecordState.Pending || r.State == RecordState.Draft));
-        var upcomingAppointments = await _context.Appointments.CountAsync(a => a.PatientId == patientId && a.AppointmentDate >= DateTime.UtcNow && a.Status != AppointmentStatus.Cancelled);
-
-        // Security Stats
-        var trustedDevicesCount = await _context.TrustedDevices.CountAsync(d => d.UserId == userId && d.IsActive && d.ExpiresAt > DateTime.UtcNow);
-        var activeShares = await _context.QRTokens.CountAsync(q => q.PatientId == patientId && q.IsActive && q.ExpiresAt > DateTime.UtcNow);
-
-        // 2. Record Type Distribution
-        var typeDistribution = await _context.MedicalRecords
+        // 1. Fetch minimal projected lists sequentially (replaces ~5 queries + avoids N+1, must be sequential for EF Core)
+        var medicalRecords = await _context.MedicalRecords
+            .AsNoTracking()
             .Where(r => r.PatientId == patientId)
-            .GroupBy(r => r.RecordType)
-            .Select(g => new TimeSeriesDataPointDTO
-            {
-                Label = g.Key ?? "Other",
-                Value = (int)g.Count()
-            })
+            .Select(r => new { r.CreatedAt, r.State, r.RecordType })
             .ToListAsync();
 
-        // 3. Record Growth Trend
-        var earliestRecord = await _context.MedicalRecords
-            .Where(r => r.PatientId == patientId)
-            .OrderBy(r => r.CreatedAt)
-            .Select(r => (DateTime?)r.CreatedAt)
-            .FirstOrDefaultAsync();
+        var appointments = await _context.Appointments
+            .AsNoTracking()
+            .Where(a => a.PatientId == patientId)
+            .Select(a => new { a.AppointmentDate, a.Status, a.IsCompleted, a.IsCancelled, a.Duration })
+            .ToListAsync();
 
+        var tokens = await _context.QRTokens
+            .AsNoTracking()
+            .Where(t => t.PatientId == patientId)
+            .Select(t => new { t.TokenType, t.AccessCount, t.IsActive, t.ExpiresAt })
+            .ToListAsync();
+
+        var scanHistoryData = await _context.ScanHistories
+            .AsNoTracking()
+            .Where(s => s.PatientId == patientId && s.ScannedAt >= today.AddDays(-6))
+            .Select(s => new { s.ScannedAt, s.TokenType })
+            .ToListAsync();
+
+        var trustedDevicesCount = await _context.TrustedDevices
+            .CountAsync(d => d.UserId == userId && d.IsActive && d.ExpiresAt > DateTime.UtcNow);
+
+        var totalRecords = medicalRecords.Count;
+        var certifiedRecords = medicalRecords.Count(r => r.State == RecordState.Certified);
+        var pendingRecords = medicalRecords.Count(r => r.State == RecordState.Pending || r.State == RecordState.Draft);
+        var upcomingAppointments = appointments.Count(a => a.AppointmentDate >= DateTime.UtcNow && a.Status != AppointmentStatus.Cancelled);
+        var activeShares = tokens.Count(q => q.IsActive && q.ExpiresAt > DateTime.UtcNow);
+
+        // 2. Record Type Distribution
+        var typeDistribution = medicalRecords
+            .GroupBy(r => r.RecordType)
+            .Select(g => new TimeSeriesDataPointDTO { Label = g.Key ?? "Other", Value = g.Count() })
+            .ToList();
+
+        // 3. Record Growth Trend
+        var earliestRecord = medicalRecords.OrderBy(r => r.CreatedAt).FirstOrDefault();
         var growthTrend = new List<RecordGrowthTrendDTO>();
+
         if (earliestRecord == null)
         {
             growthTrend.Add(new RecordGrowthTrendDTO { Label = today.AddDays(-14).ToString("MMM dd"), Total = 0 });
@@ -64,26 +80,20 @@ public class PatientStatisticsService : IPatientStatisticsService
         }
         else
         {
-            var ageInDays = (DateTime.UtcNow.Date - earliestRecord.Value.Date).TotalDays;
-            
-            if (ageInDays <= 45) // Daily Mode (Show entire data from start)
+            var ageInDays = (DateTime.UtcNow.Date - earliestRecord.CreatedAt.Date).TotalDays;
+            int cT = 0, cC = 0, cP = 0, cD = 0, cE = 0, cA = 0;
+
+            if (ageInDays <= 45) // Daily Mode
             {
-                var startDate = earliestRecord.Value.Date;
-                var dailyData = await _context.MedicalRecords
-                    .Where(r => r.PatientId == patientId && r.CreatedAt >= startDate)
+                var startDate = earliestRecord.CreatedAt.Date;
+                var dailyData = medicalRecords
                     .GroupBy(r => r.CreatedAt.Date)
                     .Select(g => new { 
-                        Date = g.Key, 
-                        Total = g.Count(), 
-                        Cert = g.Count(r => r.State == RecordState.Certified), 
-                        Pend = g.Count(r => r.State == RecordState.Pending), 
-                        Draft = g.Count(r => r.State == RecordState.Draft),
-                        Emerg = g.Count(r => r.State == RecordState.Emergency),
-                        Arch = g.Count(r => r.State == RecordState.Archived)
-                    })
-                    .ToListAsync();
+                        Date = g.Key, Total = g.Count(), Cert = g.Count(r => r.State == RecordState.Certified), 
+                        Pend = g.Count(r => r.State == RecordState.Pending), Draft = g.Count(r => r.State == RecordState.Draft),
+                        Emerg = g.Count(r => r.State == RecordState.Emergency), Arch = g.Count(r => r.State == RecordState.Archived)
+                    }).ToList();
 
-                int cT = 0, cC = 0, cP = 0, cD = 0, cE = 0, cA = 0;
                 int daysCount = (int)(DateTime.UtcNow.Date - startDate).TotalDays;
                 for (int i = 0; i <= daysCount; i++)
                 {
@@ -95,75 +105,48 @@ public class PatientStatisticsService : IPatientStatisticsService
             }
             else if (ageInDays <= 180) // Weekly Mode
             {
-                var startDate = earliestRecord.Value.Date.AddDays(-(int)earliestRecord.Value.DayOfWeek); // Start of week
-                var records = await _context.MedicalRecords
-                    .Where(r => r.PatientId == patientId)
-                    .OrderBy(r => r.CreatedAt)
-                    .ToListAsync();
-
-                int cT = 0, cC = 0, cP = 0, cD = 0, cE = 0, cA = 0;
+                var startDate = earliestRecord.CreatedAt.Date.AddDays(-(int)earliestRecord.CreatedAt.DayOfWeek);
+                var sortedRecords = medicalRecords.OrderBy(r => r.CreatedAt).ToList();
                 var current = startDate;
                 while (current <= DateTime.UtcNow.Date)
                 {
                     var next = current.AddDays(7);
-                    var weekData = records.Where(r => r.CreatedAt >= current && r.CreatedAt < next);
-                    cT += weekData.Count();
-                    cC += weekData.Count(r => r.State == RecordState.Certified);
-                    cP += weekData.Count(r => r.State == RecordState.Pending);
-                    cD += weekData.Count(r => r.State == RecordState.Draft);
-                    cE += weekData.Count(r => r.State == RecordState.Emergency);
-                    cA += weekData.Count(r => r.State == RecordState.Archived);
-
+                    var weekData = sortedRecords.Where(r => r.CreatedAt >= current && r.CreatedAt < next).ToList();
+                    cT += weekData.Count; cC += weekData.Count(r => r.State == RecordState.Certified);
+                    cP += weekData.Count(r => r.State == RecordState.Pending); cD += weekData.Count(r => r.State == RecordState.Draft);
+                    cE += weekData.Count(r => r.State == RecordState.Emergency); cA += weekData.Count(r => r.State == RecordState.Archived);
                     growthTrend.Add(new RecordGrowthTrendDTO { Label = $"W{GetIso8601WeekOfYear(current)}", Resolution = "Week", Total = cT, Certified = cC, Pending = cP, Draft = cD, Emergency = cE, Archived = cA });
                     current = next;
                 }
             }
             else if (ageInDays <= 730) // Monthly Mode
             {
-                var startDate = new DateTime(earliestRecord.Value.Year, earliestRecord.Value.Month, 1);
-                var records = await _context.MedicalRecords
-                    .Where(r => r.PatientId == patientId)
-                    .OrderBy(r => r.CreatedAt)
-                    .ToListAsync();
-
-                int cT = 0, cC = 0, cP = 0, cD = 0, cE = 0, cA = 0;
+                var startDate = new DateTime(earliestRecord.CreatedAt.Year, earliestRecord.CreatedAt.Month, 1);
+                var sortedRecords = medicalRecords.OrderBy(r => r.CreatedAt).ToList();
                 var current = startDate;
                 while (current <= DateTime.UtcNow.Date)
                 {
                     var next = current.AddMonths(1);
-                    var monthData = records.Where(r => r.CreatedAt >= current && r.CreatedAt < next);
-                    cT += monthData.Count();
-                    cC += monthData.Count(r => r.State == RecordState.Certified);
-                    cP += monthData.Count(r => r.State == RecordState.Pending);
-                    cD += monthData.Count(r => r.State == RecordState.Draft);
-                    cE += monthData.Count(r => r.State == RecordState.Emergency);
-                    cA += monthData.Count(r => r.State == RecordState.Archived);
-
+                    var monthData = sortedRecords.Where(r => r.CreatedAt >= current && r.CreatedAt < next).ToList();
+                    cT += monthData.Count; cC += monthData.Count(r => r.State == RecordState.Certified);
+                    cP += monthData.Count(r => r.State == RecordState.Pending); cD += monthData.Count(r => r.State == RecordState.Draft);
+                    cE += monthData.Count(r => r.State == RecordState.Emergency); cA += monthData.Count(r => r.State == RecordState.Archived);
                     growthTrend.Add(new RecordGrowthTrendDTO { Label = current.ToString("MMM yy"), Resolution = "Month", Total = cT, Certified = cC, Pending = cP, Draft = cD, Emergency = cE, Archived = cA });
                     current = next;
                 }
             }
             else // Yearly Mode
             {
-                var startDate = new DateTime(earliestRecord.Value.Year, 1, 1);
-                var records = await _context.MedicalRecords
-                    .Where(r => r.PatientId == patientId)
-                    .OrderBy(r => r.CreatedAt)
-                    .ToListAsync();
-
-                int cT = 0, cC = 0, cP = 0, cD = 0, cE = 0, cA = 0;
+                var startDate = new DateTime(earliestRecord.CreatedAt.Year, 1, 1);
+                var sortedRecords = medicalRecords.OrderBy(r => r.CreatedAt).ToList();
                 var current = startDate;
                 while (current <= DateTime.UtcNow.Date)
                 {
                     var next = current.AddYears(1);
-                    var yearData = records.Where(r => r.CreatedAt >= current && r.CreatedAt < next);
-                    cT += yearData.Count();
-                    cC += yearData.Count(r => r.State == RecordState.Certified);
-                    cP += yearData.Count(r => r.State == RecordState.Pending);
-                    cD += yearData.Count(r => r.State == RecordState.Draft);
-                    cE += yearData.Count(r => r.State == RecordState.Emergency);
-                    cA += yearData.Count(r => r.State == RecordState.Archived);
-
+                    var yearData = sortedRecords.Where(r => r.CreatedAt >= current && r.CreatedAt < next).ToList();
+                    cT += yearData.Count; cC += yearData.Count(r => r.State == RecordState.Certified);
+                    cP += yearData.Count(r => r.State == RecordState.Pending); cD += yearData.Count(r => r.State == RecordState.Draft);
+                    cE += yearData.Count(r => r.State == RecordState.Emergency); cA += yearData.Count(r => r.State == RecordState.Archived);
                     growthTrend.Add(new RecordGrowthTrendDTO { Label = current.ToString("yyyy"), Resolution = "Year", Total = cT, Certified = cC, Pending = cP, Draft = cD, Emergency = cE, Archived = cA });
                     current = next;
                 }
@@ -172,18 +155,11 @@ public class PatientStatisticsService : IPatientStatisticsService
 
         // 4. Appointment Status Distribution
         var now = DateTime.UtcNow;
-        var appointments = await _context.Appointments
-            .Where(a => a.PatientId == patientId)
-            .ToListAsync();
-
         var appointmentStats = appointments
             .Select(a => {
                 var status = a.Status;
-                // Dynamic status transition: Scheduled/Confirmed/InProgress -> Overdue if time exceeded
                 if (!a.IsCompleted && !a.IsCancelled && 
-                    (status == AppointmentStatus.Scheduled || 
-                     status == AppointmentStatus.Confirmed || 
-                     status == AppointmentStatus.InProgress) &&
+                    (status == AppointmentStatus.Scheduled || status == AppointmentStatus.Confirmed || status == AppointmentStatus.InProgress) &&
                     now > a.AppointmentDate.AddMinutes(a.Duration))
                 {
                     return "Overdue";
@@ -191,21 +167,10 @@ public class PatientStatisticsService : IPatientStatisticsService
                 return status.ToString();
             })
             .GroupBy(s => s)
-            .Select(g => new TimeSeriesDataPointDTO
-            {
-                Label = g.Key,
-                Value = (int)g.Count()
-            })
+            .Select(g => new TimeSeriesDataPointDTO { Label = g.Key, Value = g.Count() })
             .ToList();
 
-        // 5. Scan Trend (Last 7 days, Emergency vs Normal)
-        // Using ScanHistory as the primary source of truth for scans
-        var scanHistoryData = await _context.ScanHistories
-            .Where(s => s.PatientId == patientId && s.ScannedAt >= today.AddDays(-6))
-            .GroupBy(s => new { Day = s.ScannedAt.Date, s.TokenType })
-            .Select(g => new { g.Key.Day, g.Key.TokenType, Count = g.Count() })
-            .ToListAsync();
-        
+        // 5. Scan Trend (Last 7 days)
         var scanTrend = new List<TimeSeriesDataPointDTO>();
         for (int i = 6; i >= 0; i--)
         {
@@ -213,49 +178,30 @@ public class PatientStatisticsService : IPatientStatisticsService
             scanTrend.Add(new TimeSeriesDataPointDTO
             {
                 Label = date.ToString("ddd"),
-                Value = scanHistoryData.Where(x => x.Day == date && x.TokenType == QRTokenType.Emergency).Sum(x => x.Count),
-                Value2 = scanHistoryData.Where(x => x.Day == date && x.TokenType == QRTokenType.Normal).Sum(x => x.Count)
+                Value = scanHistoryData.Count(x => x.ScannedAt.Date == date && x.TokenType == QRTokenType.Emergency),
+                Value2 = scanHistoryData.Count(x => x.ScannedAt.Date == date && x.TokenType == QRTokenType.Normal)
             });
         }
 
-        // Aggregate counts from tokens to match management table
-        var totalEmergencyScans = await _context.QRTokens
-            .Where(t => t.PatientId == patientId && t.TokenType == QRTokenType.Emergency)
-            .SumAsync(t => t.AccessCount);
-        
-        var totalNormalScans = await _context.QRTokens
-            .Where(t => t.PatientId == patientId && t.TokenType == QRTokenType.Normal)
-            .SumAsync(t => t.AccessCount);
+        var totalEmergencyScans = tokens.Where(t => t.TokenType == QRTokenType.Emergency).Sum(t => t.AccessCount);
+        var totalNormalScans = tokens.Where(t => t.TokenType == QRTokenType.Normal).Sum(t => t.AccessCount);
 
-        // 6. Recent Activities (Mixed)
+        // 6. Recent Activities
         var recentLogs = await _context.AuditLogs
+            .AsNoTracking()
             .Where(l => l.UserId == userId)
             .OrderByDescending(l => l.Timestamp)
             .Take(5)
-            .Select(l => new ClinicalActivityDTO
-            {
-                Id = l.Id,
-                Action = l.Action,
-                Details = l.Details ?? string.Empty,
-                Timestamp = l.Timestamp,
-                Type = "Audit"
-            })
+            .Select(l => new ClinicalActivityDTO { Id = l.Id, Action = l.Action, Details = l.Details ?? string.Empty, Timestamp = l.Timestamp, Type = "Audit" })
             .ToListAsync();
 
         var recentScans = await _context.ScanHistories
-            .Include(s => s.Doctor)
-            .ThenInclude(d => d.User)
+            .AsNoTracking()
+            .Include(s => s.Doctor).ThenInclude(d => d.User)
             .Where(s => s.PatientId == patientId)
             .OrderByDescending(s => s.ScannedAt)
             .Take(5)
-            .Select(s => new ClinicalActivityDTO
-            {
-                Id = s.Id,
-                Action = "Security Scan",
-                Details = $"Profile scanned by Dr. {s.Doctor.User.FirstName} {s.Doctor.User.LastName}",
-                Timestamp = s.ScannedAt,
-                Type = "Security"
-            })
+            .Select(s => new ClinicalActivityDTO { Id = s.Id, Action = "Security Scan", Details = $"Profile scanned by Dr. {s.Doctor.User.FirstName} {s.Doctor.User.LastName}", Timestamp = s.ScannedAt, Type = "Security" })
             .ToListAsync();
 
         var combinedActivities = recentLogs.Concat(recentScans)

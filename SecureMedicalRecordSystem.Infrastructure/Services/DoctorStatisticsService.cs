@@ -28,44 +28,36 @@ public class DoctorStatisticsService : IDoctorStatisticsService
 
         // 0. Fetch Doctor Name
         var docInfo = await _context.Doctors
+            .AsNoTracking()
             .Include(d => d.User)
             .Where(d => d.Id == doctorId)
             .Select(d => d.User.FirstName)
             .FirstOrDefaultAsync() ?? "Doctor";
 
-        // 1. Execute queries sequentially
-        var todayAppointments = await _context.Appointments
-            .CountAsync(a => a.DoctorId == doctorId && a.AppointmentDate.Date == today);
+        // 1. Fetch Lightweight Projections Sequentially
+        var appointments = await _context.Appointments
+            .AsNoTracking()
+            .Where(a => a.DoctorId == doctorId && a.AppointmentDate >= thisMonthStart)
+            .Select(a => new { a.AppointmentDate, a.Status, a.PatientId })
+            .ToListAsync();
 
-        var pendingRecords = await _context.MedicalRecords
-            .CountAsync(r => r.AssignedDoctorId == doctorId && (r.State == RecordState.Pending || r.State == RecordState.Draft));
-
-        var weekAppointments = await _context.Appointments
-            .CountAsync(a => a.DoctorId == doctorId &&
-                            a.AppointmentDate >= thisWeekStart &&
-                            a.AppointmentDate < thisWeekStart.AddDays(7));
+        var medicalRecords = await _context.MedicalRecords
+            .AsNoTracking()
+            .Where(r => r.AssignedDoctorId == doctorId)
+            .Select(r => new { r.CreatedAt, r.State, r.PatientId })
+            .ToListAsync();
 
         var recentScans = await _context.ScanHistories
             .CountAsync(s => s.DoctorId == doctorId && s.ScannedAt >= DateTime.UtcNow.AddHours(-24));
 
-        var completedThisWeek = await _context.Appointments
-            .CountAsync(a => a.DoctorId == doctorId &&
-                            a.AppointmentDate >= thisWeekStart &&
-                            a.AppointmentDate < thisWeekStart.AddDays(7) &&
-                            a.Status == AppointmentStatus.Completed);
-
-        var apptPatientIds = await _context.Appointments
-            .Where(a => a.DoctorId == doctorId && a.AppointmentDate >= thisMonthStart && a.Status == AppointmentStatus.Completed)
-            .Select(a => a.PatientId)
-            .Distinct()
-            .ToListAsync();
-
-        var recordPatientIds = await _context.MedicalRecords
-            .Where(r => r.AssignedDoctorId == doctorId && r.CreatedAt >= thisMonthStart)
-            .Select(r => r.PatientId)
-            .Distinct()
-            .ToListAsync();
-
+        // 2. Memory Aggregation
+        var todayAppointments = appointments.Count(a => a.AppointmentDate.Date == today);
+        var pendingRecords = medicalRecords.Count(r => r.State == RecordState.Pending || r.State == RecordState.Draft);
+        var weekAppointments = appointments.Count(a => a.AppointmentDate >= thisWeekStart && a.AppointmentDate < thisWeekStart.AddDays(7));
+        var completedThisWeek = appointments.Count(a => a.AppointmentDate >= thisWeekStart && a.AppointmentDate < thisWeekStart.AddDays(7) && a.Status == AppointmentStatus.Completed);
+        
+        var apptPatientIds = appointments.Where(a => a.Status == AppointmentStatus.Completed).Select(a => a.PatientId).Distinct();
+        var recordPatientIds = medicalRecords.Where(r => r.CreatedAt >= thisMonthStart).Select(r => r.PatientId).Distinct();
         var monthPatients = apptPatientIds.Union(recordPatientIds).Distinct().Count();
 
         var completionRate = weekAppointments > 0

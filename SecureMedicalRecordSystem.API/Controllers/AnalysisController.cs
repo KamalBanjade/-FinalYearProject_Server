@@ -114,6 +114,24 @@ public class AnalysisController : ControllerBase
         return File(stream, "application/pdf", fileName);
     }
 
+    [HttpGet("lab-metadata")]
+    public async Task<IActionResult> GetLabMetadata()
+    {
+        var metadata = await _context.CommonLabUnits
+            .AsNoTracking()
+            .Select(u => new {
+                name = u.MeasurementType,
+                normalMin = u.NormalRangeLow,
+                normalMax = u.NormalRangeHigh,
+                improvingDirection = u.ImprovingDirection,
+                category = u.Category,
+                unit = u.DefaultUnit
+            })
+            .ToListAsync();
+
+        return Ok(metadata);
+    }
+
     private async Task<Guid> GetEffectivePatientId(Guid patientId)
     {
         var currentUserIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);

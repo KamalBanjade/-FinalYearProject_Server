@@ -320,6 +320,10 @@ try
             Log.Information("Seeding Master Data (Lab Units)...");
             await MasterDataSeeder.SeedCommonLabUnitsAsync(dbContext);
             Log.Information("Master Data Seeded.");
+
+            Log.Information("Seeding Master Medication Dictionary...");
+            await MasterMedicationSeeder.SeedMasterMedicationsAsync(dbContext);
+            Log.Information("Master Medication Dictionary Seeded.");
             
             // Backfill missing SecurityStamps to fix TOTP validation crash
             Log.Information("Backfilling missing SecurityStamps...");

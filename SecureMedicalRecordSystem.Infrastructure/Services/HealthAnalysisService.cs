@@ -9,10 +9,14 @@ namespace SecureMedicalRecordSystem.Infrastructure.Services;
 public class HealthAnalysisService : IHealthAnalysisService
 {
     private readonly ApplicationDbContext _context;
+    private readonly IPrescriptionService _prescriptionService;
 
-    public HealthAnalysisService(ApplicationDbContext context)
+    public HealthAnalysisService(
+        ApplicationDbContext context,
+        IPrescriptionService prescriptionService)
     {
         _context = context;
+        _prescriptionService = prescriptionService;
     }
 
     private static readonly Dictionary<string, (double Min, double Max)> ClinicalNormals = new()
@@ -141,15 +145,45 @@ public class HealthAnalysisService : IHealthAnalysisService
         return items.OrderBy(i => i.Severity == "High" ? 0 : i.Severity == "Medium" ? 1 : 2).ToList();
     }
 
+    private List<PatientHealthRecord>? _cachedRecords;
+    private Guid? _cachedPatientId;
+    private List<CommonLabUnit>? _cachedLabUnits;
+    private List<MasterMedication>? _cachedMasterMeds;
+    private PatientVitalBaseline? _cachedBaseline;
+
+    private async Task<PatientVitalBaseline?> LoadBaselineAsync(Guid patientId)
+    {
+        if (_cachedPatientId == patientId && _cachedBaseline != null) return _cachedBaseline;
+        _cachedBaseline = await _context.PatientVitalBaselines.FirstOrDefaultAsync(b => b.PatientId == patientId);
+        return _cachedBaseline;
+    }
+
     private async Task<List<PatientHealthRecord>> LoadRecordsAsync(Guid patientId)
     {
-        return await _context.PatientHealthRecords
+        if (_cachedPatientId == patientId && _cachedRecords != null) return _cachedRecords;
+
+        _cachedRecords = await _context.PatientHealthRecords
             .Include(r => r.Patient)
             .Include(r => r.Prescriptions)
             .Include(r => r.CustomAttributes)
             .Where(r => r.PatientId == patientId && !r.IsDeleted)
             .OrderBy(r => r.RecordDate)
             .ToListAsync();
+
+        _cachedPatientId = patientId;
+        return _cachedRecords;
+    }
+
+    private async Task<List<CommonLabUnit>> LoadLabUnitsAsync()
+    {
+        _cachedLabUnits ??= await _context.CommonLabUnits.AsNoTracking().ToListAsync();
+        return _cachedLabUnits;
+    }
+
+    private async Task<List<MasterMedication>> LoadMasterMedsAsync()
+    {
+        _cachedMasterMeds ??= await _context.MasterMedications.AsNoTracking().ToListAsync();
+        return _cachedMasterMeds;
     }
 
     private double LinearRegressionSlope(List<double> values)
@@ -269,24 +303,66 @@ public class HealthAnalysisService : IHealthAnalysisService
         };
     }
 
-    private string InterpretDelta(string vitalName, double delta)
+    /// <summary>Synchronous in-memory lookup using a pre-loaded CommonLabUnit dictionary.</summary>
+    private static CommonLabUnit? FindLabMetadata(
+        string markerName,
+        IReadOnlyList<CommonLabUnit> allLabUnits)
     {
-        string name = vitalName.ToLower();
-        if (name.Contains("systolic") || name.Contains("diastolic")) 
-            return delta < -2 ? "Improved" : (delta > 2 ? "Degraded" : "Neutral");
-        
-        if (name.Contains("glucose") || name.Contains("hba1c") || name.Contains("cholesterol") || name.Contains("creatinine") || name.Contains("bmi"))
-            return delta < -0.1 ? "Improved" : (delta > 0.1 ? "Degraded" : "Neutral");
+        var name = markerName.Trim().ToLower();
+        return allLabUnits.FirstOrDefault(u =>
+            u.MeasurementType.ToLower() == name ||
+            u.MeasurementType.ToLower().Contains(name) ||
+            (u.Aliases != null && u.Aliases.ToLower().Contains(name)));
+    }
 
-        if (name.Contains("egfr") || name.Contains("spo2"))
-            return delta > 0.5 ? "Improved" : (delta < -0.5 ? "Degraded" : "Neutral");
+    /// <summary>Legacy async overload — used only by callers that still need DB access.
+    /// Prefer FindLabMetadata() with a pre-loaded list wherever possible.</summary>
+    private async Task<CommonLabUnit?> GetLabMetadataAsync(string markerName)
+    {
+        var name = markerName.Trim().ToLower();
+        return await _context.CommonLabUnits
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u =>
+                u.MeasurementType.ToLower() == name ||
+                u.MeasurementType.ToLower().Contains(name) ||
+                (u.Aliases != null && u.Aliases.ToLower().Contains(name)));
+    }
 
-        return name switch
+    private static string InterpretDelta(
+        string vitalName,
+        double delta,
+        IReadOnlyList<CommonLabUnit> allLabUnits)
+    {
+        var meta = FindLabMetadata(vitalName, allLabUnits);
+
+        if (meta != null)
         {
-            "heartrate" => Math.Abs(delta) > 10 ? "Neutral" : "Neutral",
-            "temperature" => Math.Abs(delta) > 1.5 ? "Neutral" : "Neutral",
-            _ => Math.Abs(delta) < 0.05 ? "Neutral" : (delta < 0 ? "Improved" : "Degraded") // Default: lower is usually better in clinical alerts
+            return meta.ImprovingDirection switch
+            {
+                "Lower"   => delta < -0.05 ? "Improved" : delta > 0.05 ? "Degraded" : "Neutral",
+                "Higher"  => delta > 0.05  ? "Improved" : delta < -0.05 ? "Degraded" : "Neutral",
+                "InRange" when meta.NormalRangeLow.HasValue && meta.NormalRangeHigh.HasValue =>
+                    "Neutral",
+                _ => delta < -0.05 ? "Improved" : delta > 0.05 ? "Degraded" : "Neutral"
+            };
+        }
+
+        // Fallback for standard vitals not in DB
+        return vitalName.ToLower() switch
+        {
+            var n when n.Contains("systolic") || n.Contains("diastolic") =>
+                delta < -2 ? "Improved" : delta > 2 ? "Degraded" : "Neutral",
+            var n when n.Contains("egfr") || n.Contains("spo2") =>
+                delta > 0.5 ? "Improved" : delta < -0.5 ? "Degraded" : "Neutral",
+            _ => Math.Abs(delta) < 0.05 ? "Neutral" : delta < 0 ? "Improved" : "Degraded"
         };
+    }
+
+    /// <summary>Async overload kept for backward compatibility with any direct callers.</summary>
+    private async Task<string> InterpretDeltaAsync(string vitalName, double delta)
+    {
+        var allLabUnits = await LoadLabUnitsAsync();
+        return InterpretDelta(vitalName, delta, allLabUnits);
     }
 
     private Dictionary<string, List<(DateTime Date, double Value, decimal? Min, decimal? Max, bool? IsAbnormal, string? Unit, string? Section)>>
@@ -347,8 +423,10 @@ public class HealthAnalysisService : IHealthAnalysisService
 
     public async Task<List<VitalTrendDto>> GetVitalTrendsAsync(Guid patientId)
     {
-        var records = await LoadRecordsAsync(patientId);
-        var baseline = await _context.PatientVitalBaselines.FirstOrDefaultAsync(b => b.PatientId == patientId);
+        // Load records + baseline + all lab metadata sequentially (EF Core context is not thread-safe)
+        var records     = await LoadRecordsAsync(patientId);
+        var baseline    = await LoadBaselineAsync(patientId);
+        var allLabUnits = await LoadLabUnitsAsync();
         
         var vitalsMapping = new Dictionary<string, Func<PatientHealthRecord, double?>>
         {
@@ -477,14 +555,20 @@ public class HealthAnalysisService : IHealthAnalysisService
                 }
                 else
                 {
-                    // Fallback heuristics for common clinical markers
-                    string name = attrName.ToLower();
-                    if (name.Contains("glucose") || name.Contains("hba1c") || name.Contains("cholesterol") || name.Contains("creatinine") || name.Contains("weight"))
-                        direction = slope < 0 ? "Improving" : "Degrading";
-                    else if (name.Contains("egfr"))
-                        direction = slope > 0 ? "Improving" : "Degrading";
-                    else
-                        direction = slope < 0 ? "Improving" : "Degrading"; // General clinical bias
+                    // In-memory direction lookup (no DB call — allLabUnits already loaded)
+                    var meta = FindLabMetadata(attrName, allLabUnits);
+                    string improvingDir = meta?.ImprovingDirection ?? "Lower";
+
+                    direction = improvingDir switch
+                    {
+                        "Higher" => slope > 0.05 ? "Improving" : slope < -0.05 ? "Degrading" : "Stable",
+                        "InRange" when min.HasValue && max.HasValue =>
+                            // slope moving toward midpoint = improving
+                            (slope > 0 && current < ((double)min.Value + (double)max.Value) / 2.0) ||
+                            (slope < 0 && current > ((double)min.Value + (double)max.Value) / 2.0)
+                            ? "Improving" : "Degrading",
+                        _ => slope < -0.05 ? "Improving" : slope > 0.05 ? "Degrading" : "Stable"
+                    };
                 }
             }
 
@@ -524,7 +608,10 @@ public class HealthAnalysisService : IHealthAnalysisService
 
     public async Task<List<MedicationCorrelationDto>> GetMedicationCorrelationsAsync(Guid patientId)
     {
-        var records = await LoadRecordsAsync(patientId);
+        // Pre-load both CommonLabUnits and MasterMedications sequentially (EF Core context is not thread-safe)
+        var records       = await LoadRecordsAsync(patientId);
+        var allLabUnits   = await LoadLabUnitsAsync();
+        var allMasterMeds = await LoadMasterMedsAsync();
         var correlations = new List<MedicationCorrelationDto>();
         
         var medMap = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
@@ -549,6 +636,10 @@ public class HealthAnalysisService : IHealthAnalysisService
             { "BMI", r => (double?)r.BMI }
         };
 
+        // Build lookup dictionaries from pre-loaded data (no further DB hits needed)
+        var masterMedsByNameLower = allMasterMeds
+            .ToDictionary(m => m.Name.ToLower(), m => m, StringComparer.OrdinalIgnoreCase);
+
         foreach (var kvp in medMap)
         {
             string medName = kvp.Key;
@@ -563,10 +654,28 @@ public class HealthAnalysisService : IHealthAnalysisService
                 if (afterRecords.Count == 1) continue; // no follow ups after introduction
             }
 
+            // Look up metadata from pre-loaded dictionary instead of hitting DB again
+            masterMedsByNameLower.TryGetValue(medName.ToLower(), out var medMeta);
+            // Also try alias lookup if direct name lookup fails
+            if (medMeta == null)
+            {
+                medMeta = allMasterMeds.FirstOrDefault(m =>
+                    !string.IsNullOrEmpty(m.Aliases) &&
+                    (System.Text.Json.JsonSerializer
+                        .Deserialize<List<string>>(m.Aliases) ?? new List<string>())
+                        .Any(a => a.Equals(medName, StringComparison.OrdinalIgnoreCase)));
+            }
+
             var dto = new MedicationCorrelationDto
             {
                 MedicationName = medName,
-                IntroducedAt = introducedAt
+                IntroducedAt = introducedAt,
+                DrugCategory = medMeta?.DrugCategory ?? "General",
+                PrimaryMarkers = medMeta?.PrimaryMarkers != null
+                    ? System.Text.Json.JsonSerializer
+                        .Deserialize<List<string>>(medMeta.PrimaryMarkers)
+                          ?? new List<string>()
+                    : new List<string>()
             };
 
             // Population of activity metrics
@@ -596,7 +705,7 @@ public class HealthAnalysisService : IHealthAnalysisService
                     AvgBefore = avgB,
                     AvgAfter = avgA,
                     Delta = delta,
-                    Interpretation = InterpretDelta(vMap.Key, delta),
+                    Interpretation = InterpretDelta(vMap.Key, delta, allLabUnits), // sync, no DB
                     VisitsBeforeCount = beforeVals.Count,
                     VisitsAfterCount = afterVals.Count
                 });
@@ -658,14 +767,7 @@ public class HealthAnalysisService : IHealthAnalysisService
                 }
                 else
                 {
-                    // Heuristic fallback for medication effects
-                    string name = attrName.ToLower();
-                    if (name.Contains("glucose") || name.Contains("hba1c") || name.Contains("cholesterol") || name.Contains("creatinine"))
-                        interpretation = delta < 0 ? "Improved" : "Degraded";
-                    else if (name.Contains("egfr"))
-                        interpretation = delta > 0 ? "Improved" : "Degraded";
-                    else
-                        interpretation = delta < 0 ? "Improved" : "Degraded";
+                    interpretation = InterpretDelta(attrName, delta, allLabUnits); // sync, no DB hit
                 }
 
                 dto.VitalDeltas.Add(new VitalCorrelationDeltaDto
@@ -681,6 +783,17 @@ public class HealthAnalysisService : IHealthAnalysisService
             }
 
 
+            // Promote PrimaryMarkers to top of the list
+            if (dto.PrimaryMarkers.Count > 0)
+            {
+                dto.VitalDeltas = dto.VitalDeltas
+                    .OrderBy(d => dto.PrimaryMarkers
+                        .Contains(d.VitalName,
+                            StringComparer.OrdinalIgnoreCase) ? 0 : 1)
+                    .ThenBy(d => d.VitalName)
+                    .ToList();
+            }
+
             if (dto.VitalDeltas.Count > 0)
                 correlations.Add(dto);
         }
@@ -691,7 +804,7 @@ public class HealthAnalysisService : IHealthAnalysisService
     public async Task<List<AbnormalityPatternDto>> GetAbnormalityPatternsAsync(Guid patientId)
     {
         var records = await LoadRecordsAsync(patientId);
-        var baseline = await _context.PatientVitalBaselines.FirstOrDefaultAsync(b => b.PatientId == patientId);
+        var baseline = await LoadBaselineAsync(patientId);
         var patterns = new List<AbnormalityPatternDto>();
 
         var vitalsMapping = new Dictionary<string, Func<PatientHealthRecord, double?>>
@@ -827,7 +940,7 @@ public class HealthAnalysisService : IHealthAnalysisService
     public async Task<StabilityTimelineDto> GetStabilityTimelineAsync(Guid patientId)
     {
         var records = await LoadRecordsAsync(patientId);
-        var baseline = await _context.PatientVitalBaselines.FirstOrDefaultAsync(b => b.PatientId == patientId);
+        var baseline = await LoadBaselineAsync(patientId);
 
         var dto = new StabilityTimelineDto();
         if (records.Count == 0) return dto;
@@ -926,11 +1039,14 @@ public class HealthAnalysisService : IHealthAnalysisService
         var records = await LoadRecordsAsync(patientId);
         if (records.Count == 0) return new AnalysisSummaryDto { PatientId = patientId };
 
+        // Load dependencies sequentially (EF Core context is not thread-safe for parallel reads)
         var trends = await GetVitalTrendsAsync(patientId);
         var timeline = await GetStabilityTimelineAsync(patientId);
+        var patterns = await GetAbnormalityPatternsAsync(patientId);
+        var correlations = await GetMedicationCorrelationsAsync(patientId);
+        var baseline = await LoadBaselineAsync(patientId);
 
         var latestRecord = records.Last();
-        var baseline = await _context.PatientVitalBaselines.FirstOrDefaultAsync(b => b.PatientId == patientId);
 
         var dto = new AnalysisSummaryDto
         {
@@ -969,7 +1085,6 @@ public class HealthAnalysisService : IHealthAnalysisService
             dto.KeyInsights.Add($"Marker {t.VitalName} shows significant trend slope ({t.Slope:F2}).");
         }
 
-        var patterns = await GetAbnormalityPatternsAsync(patientId);
         foreach (var p in patterns)
         {
             foreach (var s in p.Streaks.Where(x => x.ConsecutiveCount >= 3))
@@ -1005,7 +1120,6 @@ public class HealthAnalysisService : IHealthAnalysisService
             }
         }
 
-        var correlations = await GetMedicationCorrelationsAsync(patientId);
         foreach (var c in correlations.Where(x => (DateTime.UtcNow - x.IntroducedAt).TotalDays <= 180))
         {
             dto.KeyInsights.Add($"Medication {c.MedicationName} was recently introduced ({c.IntroducedAt:MMM dd, yyyy}).");

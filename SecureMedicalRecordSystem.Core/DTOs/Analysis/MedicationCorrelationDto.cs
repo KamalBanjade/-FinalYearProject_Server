@@ -6,6 +6,8 @@ public class MedicationCorrelationDto
     public DateTime IntroducedAt { get; set; }
     public DateTime LastSeenAt { get; set; } // Last visit this medication appeared in
     public bool IsCurrentlyActive { get; set; } // True if present in most recent record
+    public string DrugCategory { get; set; } = "General";
+    public List<string> PrimaryMarkers { get; set; } = new();
     public List<VitalCorrelationDeltaDto> VitalDeltas { get; set; } = new();
 }
 

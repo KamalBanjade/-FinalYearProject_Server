@@ -38,15 +38,15 @@ public class PrescriptionService : IPrescriptionService
 
         if (alreadySeeded) return;
 
-        var medications = ExtractMedications(treatmentPlanText);
+        var medications = await ExtractMedicationsFromDbAsync(treatmentPlanText);
 
-        foreach (var med in medications)
+        foreach (var (canonicalName, drugCategory) in medications)
         {
             _context.Prescriptions.Add(new Prescription
             {
                 Id = Guid.NewGuid(),
                 PatientHealthRecordId = recordId,
-                MedicationName = med,
+                MedicationName = canonicalName, // always the canonical name
                 CreatedAt = DateTime.UtcNow,
                 CreatedBy = "system-seeder"
             });
@@ -55,18 +55,54 @@ public class PrescriptionService : IPrescriptionService
         await _context.SaveChangesAsync();
     }
 
-    // Replicated from HealthRecordService.ExtractMedications() — kept local to avoid cross-service coupling
-    private static List<string> ExtractMedications(string text)
+    public async Task<MasterMedication?> GetMedicationMetadataAsync(string medicationName)
     {
-        if (string.IsNullOrWhiteSpace(text)) return new List<string>();
+        var lower = medicationName.ToLower();
+        var allMeds = await _context.MasterMedications
+            .AsNoTracking()
+            .ToListAsync();
 
-        var knownMedications = new[]
-        {
-            "metformin", "amlodipine", "lisinopril", "atorvastatin", "aspirin",
-            "omeprazole", "paracetamol", "ibuprofen", "amoxicillin", "insulin"
-        };
+        return allMeds.FirstOrDefault(m =>
+            m.Name.ToLower() == lower ||
+            (!string.IsNullOrEmpty(m.Aliases) &&
+             (System.Text.Json.JsonSerializer
+                 .Deserialize<List<string>>(m.Aliases) ?? new List<string>())
+                 .Any(a => a.ToLower() == lower)));
+    }
+
+    private async Task<List<(string CanonicalName, string DrugCategory)>>
+        ExtractMedicationsFromDbAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return new List<(string, string)>();
 
         var lower = text.ToLower();
-        return knownMedications.Where(m => lower.Contains(m)).ToList();
+        var allMedications = await _context.MasterMedications
+            .AsNoTracking()
+            .ToListAsync();
+
+        var matched = new List<(string CanonicalName, string DrugCategory)>();
+        var seenCanonical = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var med in allMedications)
+        {
+            bool isMatch = lower.Contains(med.Name.ToLower());
+
+            if (!isMatch && !string.IsNullOrEmpty(med.Aliases))
+            {
+                // Parse JSON alias array and check each one
+                var aliases = System.Text.Json.JsonSerializer
+                    .Deserialize<List<string>>(med.Aliases) ?? new List<string>();
+                isMatch = aliases.Any(alias =>
+                    lower.Contains(alias.ToLower()));
+            }
+
+            if (isMatch && seenCanonical.Add(med.Name))
+            {
+                matched.Add((med.Name, med.DrugCategory));
+            }
+        }
+
+        return matched;
     }
 }
