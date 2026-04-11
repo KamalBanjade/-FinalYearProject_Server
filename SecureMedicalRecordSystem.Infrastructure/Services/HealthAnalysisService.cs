@@ -501,7 +501,7 @@ public class HealthAnalysisService : IHealthAnalysisService
                 PercentChangeFromBaseline = (baselineMapping[vName].HasValue && baselineMapping[vName].Value != 0)
                     ? ((currentVal - baselineMapping[vName]!.Value) / baselineMapping[vName]!.Value) * 100 
                     : null,
-                StabilityWindows = GetStabilityWindows(validPoints, bValue),
+                StabilityWindows = validPoints.Select(p => new StabilityWindowDto { From = p.date, To = p.date, AverageValue = p.value }).ToList(),
                 NormalMin = normalRange.Min,
                 NormalMax = normalRange.Max,
                 HumanInterpretation = GenerateHumanInterpretation(vName, direction, slope, currentVal),
@@ -576,9 +576,7 @@ public class HealthAnalysisService : IHealthAnalysisService
                 ? ((double)min.Value + (double)max.Value) / 2.0
                 : attrBaseline;
 
-            var stabilityWindows = GetStabilityWindows(
-                dataPoints.Select(d => (d.Date, d.Value)).ToList(),
-                stabilityCenter);
+            var trendPoints = dataPoints.Select(d => new StabilityWindowDto { From = d.Date, To = d.Date, AverageValue = d.Value }).ToList();
 
             var percentChange = attrBaseline != 0
                 ? ((current - attrBaseline) / attrBaseline) * 100
@@ -593,7 +591,7 @@ public class HealthAnalysisService : IHealthAnalysisService
                 CurrentValue = current,
                 BaselineValue = attrBaseline,
                 PercentChangeFromBaseline = percentChange,
-                StabilityWindows = stabilityWindows,
+                StabilityWindows = trendPoints,
                 NormalMin = min.HasValue ? (double)min.Value : null,
                 NormalMax = max.HasValue ? (double)max.Value : null,
                 HumanInterpretation = GenerateHumanInterpretation(attrName, direction, slope, current),
@@ -650,8 +648,10 @@ public class HealthAnalysisService : IHealthAnalysisService
 
             if (afterRecords.Count > 0 && afterRecords[0].RecordDate == introducedAt)
             {
-                // the introduction visit is considered 'after', but if there's no follow ups, we might skip
-                if (afterRecords.Count == 1) continue; // no follow ups after introduction
+                // Previously we required at least 1 follow-up visit AFTER the introduction.
+                // We're relaxing this to allow comparing the "Introduction" visit itself against the "Before" history.
+                // However, we still need at least one record in the 'after' set (which includes intro).
+                if (afterRecords.Count == 0) continue; 
             }
 
             // Look up metadata from pre-loaded dictionary instead of hitting DB again
@@ -691,13 +691,25 @@ public class HealthAnalysisService : IHealthAnalysisService
             foreach (var vMap in vitalsMapping)
             {
                 var beforeVals = beforeRecords.Where(r => vMap.Value(r).HasValue).Select(r => vMap.Value(r)!.Value).ToList();
-                var afterVals = afterRecords.Where(r => vMap.Value(r).HasValue).Skip(afterRecords[0].RecordDate == introducedAt ? 1 : 0).Select(r => vMap.Value(r)!.Value).ToList();
+                var afterVals = afterRecords.Where(r => vMap.Value(r).HasValue).Select(r => vMap.Value(r)!.Value).ToList();
 
-                if (beforeVals.Count == 0 || afterVals.Count == 0) continue;
+                if (afterVals.Count == 0) continue;
 
-                double avgB = beforeVals.Average();
-                double avgA = afterVals.Average();
-                double delta = avgA - avgB;
+                double avgB, avgA, delta;
+
+                if (beforeVals.Count > 0)
+                {
+                    avgB = beforeVals.Average();
+                    avgA = afterVals.Average();
+                    delta = avgA - avgB;
+                }
+                else
+                {
+                    // No history: Use first introduction reading as baseline
+                    avgB = afterVals.First();
+                    avgA = afterVals.Count > 1 ? afterVals.Skip(1).Average() : avgB;
+                    delta = avgA - avgB;
+                }
 
                 dto.VitalDeltas.Add(new VitalCorrelationDeltaDto
                 {
@@ -705,7 +717,7 @@ public class HealthAnalysisService : IHealthAnalysisService
                     AvgBefore = avgB,
                     AvgAfter = avgA,
                     Delta = delta,
-                    Interpretation = InterpretDelta(vMap.Key, delta, allLabUnits), // sync, no DB
+                    Interpretation = InterpretDelta(vMap.Key, delta, allLabUnits),
                     VisitsBeforeCount = beforeVals.Count,
                     VisitsAfterCount = afterVals.Count
                 });

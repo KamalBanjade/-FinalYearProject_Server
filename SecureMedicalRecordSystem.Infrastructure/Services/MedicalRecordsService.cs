@@ -162,8 +162,8 @@ public class MedicalRecordsService : IMedicalRecordsService
 
         try
         {
-            // 3. Fire audit log BEFORE streaming so latency is absorbed in parallel
-            _ = _auditLogService.LogAsync(requestingUserId, "Medical Record Streamed",
+            // 3. Log audit event (Awaited to avoid DbContext concurrency issues)
+            await _auditLogService.LogAsync(requestingUserId, "Medical Record Streamed",
                 $"Streamed {record.OriginalFileName}", "0.0.0.0", "Service", "MedicalRecord", record.Id.ToString());
 
             // 4. Open raw S3 stream (no buffer copy — live network socket)

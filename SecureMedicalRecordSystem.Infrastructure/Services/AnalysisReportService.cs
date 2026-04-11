@@ -122,14 +122,39 @@ public class AnalysisReportService : IAnalysisReportService
 
     private void ComposeHeader(IContainer container)
     {
+        var logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "logo.png");
+        // Fallback to project source path if not in bin
+        if (!File.Exists(logoPath))
+        {
+            logoPath = Path.Combine(Directory.GetCurrentDirectory(), "..", "SecureMedicalRecordSystem.Infrastructure", "Assets", "logo.png");
+        }
+
         container.Column(column =>
         {
             column.Item().Row(row =>
             {
-                row.RelativeItem().Text("QR Medical System – Confidential").FontSize(8).FontColor(Colors.Grey.Medium);
-                row.RelativeItem().AlignRight().Text(DateTime.UtcNow.ToString("dd MMM yyyy")).FontSize(8).FontColor(Colors.Grey.Medium);
+                if (File.Exists(logoPath))
+                {
+                    row.RelativeItem().Column(c => {
+                        c.Item().Height(40).Image(logoPath, ImageScaling.FitHeight);
+                    });
+                }
+                else
+                {
+                    row.RelativeItem().Text("QR Medical System").FontSize(16).Bold().FontColor(Colors.Blue.Medium);
+                }
+
+                row.RelativeItem().AlignRight().Column(c =>
+                {
+                    c.Item().Text("CLINICAL HEALTH RECORD").FontSize(24).ExtraBold().FontColor(Colors.Blue.Medium);
+                    c.Item().Text(x => {
+                        x.AlignRight();
+                        x.Span("Generated on: ").FontSize(10).FontColor(Colors.Grey.Medium);
+                        x.Span(DateTime.UtcNow.ToString("dd MMMM yyyy HH:mm")).FontSize(10).FontColor(Colors.Grey.Medium);
+                    });
+                });
             });
-            column.Item().PaddingTop(5).LineHorizontal(1f).LineColor(Colors.Grey.Medium);
+            column.Item().PaddingTop(5).LineHorizontal(1.5f).LineColor(Colors.Grey.Medium);
         });
     }
 
