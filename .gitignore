@@ -76,3 +76,8 @@ Storage/QRCodes/*
 Storage/Temp/*
 !Storage/Temp/.gitkeep
 keys.txt
+
+# Local diagnostic and temporary files
+patch.sql
+patient_medical_records_cleaned_2.csv
+run_diagnostic.cs

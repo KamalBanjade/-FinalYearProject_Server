@@ -18,4 +18,5 @@ public class AnalysisSummaryDto
     public DateTime? NextFollowUpDate { get; set; }
     public List<AttentionItemDto> ItemsNeedingAttention { get; set; } = new();
     public double LatestStabilityScore { get; set; }
+    public string? PrimaryCondition { get; set; }
 }

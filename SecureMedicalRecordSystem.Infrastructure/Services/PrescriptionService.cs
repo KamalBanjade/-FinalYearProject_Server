@@ -63,11 +63,11 @@ public class PrescriptionService : IPrescriptionService
             .ToListAsync();
 
         return allMeds.FirstOrDefault(m =>
-            m.Name.ToLower() == lower ||
+            m.Name.Equals(medicationName, StringComparison.OrdinalIgnoreCase) ||
             (!string.IsNullOrEmpty(m.Aliases) &&
              (System.Text.Json.JsonSerializer
                  .Deserialize<List<string>>(m.Aliases) ?? new List<string>())
-                 .Any(a => a.ToLower() == lower)));
+                 .Any(a => a.Equals(medicationName, StringComparison.OrdinalIgnoreCase))));
     }
 
     private async Task<List<(string CanonicalName, string DrugCategory)>>

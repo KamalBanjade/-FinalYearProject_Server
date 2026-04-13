@@ -35,6 +35,11 @@ public class CreateHealthRecordDTO
 
     // Template tracking
     public Guid? TemplateId { get; set; }
+
+    // Patient-scoped exclusions (only sent for clone/template-derived sessions).
+    // Field names (snake_case) the doctor explicitly deleted for this patient.
+    // These are stored on the record and used by analysis — global template is untouched.
+    public List<string>? ExcludedFields { get; set; }
 }
 
 public class HealthRecordVitalsDTO

@@ -49,4 +49,17 @@ public class TemplateFieldDTO
 
     [JsonPropertyName("dropdown_options")]
     public List<string>? DropdownOptions { get; set; }
+
+    [JsonPropertyName("is_retired")]
+    public bool IsRetired { get; set; } = false;
+    // Set to true when a doctor deletes this field during consultation.
+    // Retired fields are excluded from analysis but NOT deleted from
+    // the schema — historical data integrity is preserved.
+
+    [JsonPropertyName("rename_history")]
+    public List<string>? RenameHistory { get; set; }
+    // Ordered list of previous FieldLabel values, oldest first.
+    // e.g. ["Blood Sugar", "Glucose"] means field was renamed twice.
+    // Used by ExtractCustomAttributes to unify historical records
+    // that used the old label with current records using the new label.
 }

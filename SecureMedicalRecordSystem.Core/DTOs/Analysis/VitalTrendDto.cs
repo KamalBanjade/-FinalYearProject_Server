@@ -15,6 +15,7 @@ public class VitalTrendDto
     public double? NormalMax { get; set; } // Global clinical range
     public string? VitalUnit { get; set; } // Unit of measurement (e.g., mg/dL, bpm)
     public string? SectionName { get; set; } // For grouping labs by specialty
+    public bool IsAbnormal { get; set; } // Explicit clinical alert flag
     public List<StabilityWindowDto> StabilityWindows { get; set; } = new();
 }
 

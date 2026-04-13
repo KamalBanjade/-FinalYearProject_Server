@@ -30,6 +30,7 @@ public class HealthRecordService : IHealthRecordService
     private readonly ITigrisStorageService _storageService;
     private readonly IEncryptionService _encryptionService;
     private readonly IServiceScopeFactory _serviceScopeFactory;
+    private readonly IPrescriptionService _prescriptionService;
 
     public HealthRecordService(
         ApplicationDbContext context,
@@ -39,7 +40,8 @@ public class HealthRecordService : IHealthRecordService
         UserManager<ApplicationUser> userManager,
         ITigrisStorageService storageService,
         IEncryptionService encryptionService,
-        IServiceScopeFactory serviceScopeFactory)
+        IServiceScopeFactory serviceScopeFactory,
+        IPrescriptionService prescriptionService)
     {
         _context = context;
         _templateService = templateService;
@@ -49,6 +51,7 @@ public class HealthRecordService : IHealthRecordService
         _storageService = storageService;
         _encryptionService = encryptionService;
         _serviceScopeFactory = serviceScopeFactory;
+        _prescriptionService = prescriptionService;
     }
 
     public async Task<(bool Success, string Message, HealthRecordDTO? Data)> CreateStructuredRecordAsync(
@@ -100,6 +103,11 @@ public class HealthRecordService : IHealthRecordService
                 // Template tracking
                 TemplateId = request.TemplateId,
                 CreatedFromScratch = request.TemplateId == null,
+                
+                // Patient-scoped exclusions — serialised as compact JSON for efficient storage
+                ExcludedFields = (request.ExcludedFields != null && request.ExcludedFields.Any())
+                    ? JsonSerializer.Serialize(request.ExcludedFields)
+                    : null,
                 
                 // Metadata
                 IsStructured = true,
@@ -160,6 +168,12 @@ public class HealthRecordService : IHealthRecordService
 
             // 8. Save all changes:
             await _context.SaveChangesAsync();
+
+            // 8.1 Seed prescriptions from treatment plan text (if any)
+            if (!string.IsNullOrWhiteSpace(record.TreatmentPlan))
+            {
+                await _prescriptionService.SeedPrescriptionsFromTreatmentPlanAsync(record.Id, record.TreatmentPlan);
+            }
 
             // 9. Log creation:
             await _auditLogService.LogAsync(

@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using SecureMedicalRecordSystem.Infrastructure.Data;
 
@@ -11,9 +12,11 @@ using SecureMedicalRecordSystem.Infrastructure.Data;
 namespace SecureMedicalRecordSystem.Infrastructure.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260411094541_FixTemplateIdUniqueIndex")]
+    partial class FixTemplateIdUniqueIndex
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1621,9 +1624,6 @@ namespace SecureMedicalRecordSystem.Infrastructure.Migrations
 
                     b.Property<string>("DoctorNotes")
                         .HasMaxLength(5000)
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("ExcludedFields")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("FollowUpDate")

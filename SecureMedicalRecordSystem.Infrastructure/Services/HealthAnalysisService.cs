@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SecureMedicalRecordSystem.Core.DTOs.Analysis;
+using SecureMedicalRecordSystem.Core.DTOs.HealthRecords;
 using SecureMedicalRecordSystem.Core.Entities;
 using SecureMedicalRecordSystem.Core.Interfaces;
 using SecureMedicalRecordSystem.Infrastructure.Data;
@@ -166,6 +167,7 @@ public class HealthAnalysisService : IHealthAnalysisService
             .Include(r => r.Patient)
             .Include(r => r.Prescriptions)
             .Include(r => r.CustomAttributes)
+            .Include(r => r.Template)
             .Where(r => r.PatientId == patientId && !r.IsDeleted)
             .OrderBy(r => r.RecordDate)
             .ToListAsync();
@@ -365,8 +367,138 @@ public class HealthAnalysisService : IHealthAnalysisService
         return InterpretDelta(vitalName, delta, allLabUnits);
     }
 
+    private async Task<(HashSet<string> RetiredFields,
+                         Dictionary<string, string> RenameMap,
+                         HashSet<string> ActiveFieldLabels)>
+        GetTemplateFieldContextAsync(Guid patientId)
+    {
+        // Find the most recently used template for this patient
+        var latestRecord = await _context.PatientHealthRecords
+            .Where(r => r.PatientId == patientId &&
+                        !r.IsDeleted &&
+                        r.TemplateId != null)
+            .OrderByDescending(r => r.RecordDate)
+            .FirstOrDefaultAsync();
+
+        var activeFieldLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        if (latestRecord?.TemplateId == null)
+            return (new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                    activeFieldLabels);
+
+        var template = await _context.Templates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(t => t.Id == latestRecord.TemplateId);
+
+        if (template == null || string.IsNullOrEmpty(template.TemplateSchema))
+            return (new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                    activeFieldLabels);
+
+        TemplateSchemaDTO? schema = null;
+        try
+        {
+            schema = System.Text.Json.JsonSerializer.Deserialize<TemplateSchemaDTO>(
+                template.TemplateSchema,
+                new System.Text.Json.JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
+        }
+        catch { /* malformed schema — treat as no restrictions */ }
+
+        if (schema == null)
+            return (new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                    activeFieldLabels);
+
+        var retiredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var renameMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        // Maps oldLabel → currentLabel
+
+        foreach (var section in schema.Sections)
+        {
+            foreach (var field in section.Fields)
+            {
+                // Collect retired field labels
+                if (field.IsRetired)
+                {
+                    retiredFields.Add(field.FieldLabel);
+                    // Also add any historical names for this field
+                    if (field.RenameHistory != null)
+                        foreach (var oldName in field.RenameHistory)
+                            retiredFields.Add(oldName);
+                }
+
+                // Build rename map: oldName → currentLabel
+                if (field.RenameHistory != null && field.RenameHistory.Count > 0)
+                {
+                    foreach (var oldName in field.RenameHistory)
+                    {
+                        if (!retiredFields.Contains(oldName))
+                            renameMap[oldName] = field.FieldLabel;
+                    }
+                }
+            }
+        }
+
+        // ── Patient-Scoped Exclusions ─────────────────────────────────────────────
+        // Read ExcludedFields from the LATEST record for this patient.
+        // These are fields the doctor explicitly deleted in a clone/template session —
+        // stored per-record so the global template is never mutated.
+        // We look back across the last 10 records to accumulate all exclusions
+        // (a later visit can re-add a field by simply measuring it without excluding it).
+        var recentRecords = await _context.PatientHealthRecords
+            .Where(r => r.PatientId == patientId && !r.IsDeleted && !string.IsNullOrEmpty(r.ExcludedFields))
+            .OrderByDescending(r => r.RecordDate)
+            .Take(10)
+            .Select(r => r.ExcludedFields)
+            .ToListAsync();
+
+        foreach (var excludedJson in recentRecords)
+        {
+            try
+            {
+                var excludedNames = System.Text.Json.JsonSerializer.Deserialize<List<string>>(excludedJson!);
+                if (excludedNames != null)
+                {
+                    // excluded field names are field_name (snake_case).
+                    foreach (var fieldName in excludedNames)
+                    {
+                        retiredFields.Add(fieldName);
+                        foreach (var section in schema.Sections)
+                        {
+                            var match = section.Fields.FirstOrDefault(f =>
+                                string.Equals(f.FieldName, fieldName, StringComparison.OrdinalIgnoreCase));
+                            if (match != null)
+                            {
+                                retiredFields.Add(match.FieldLabel);
+                                if (match.RenameHistory != null)
+                                    foreach (var oldName in match.RenameHistory)
+                                        retiredFields.Add(oldName);
+                            }
+                        }
+                    }
+                }
+            }
+            catch { /* malformed JSON — skip */ }
+        }
+
+        // Always add all fields in the current schema to active whitelist
+        foreach (var sec in schema.Sections)
+            foreach (var f in sec.Fields)
+                activeFieldLabels.Add(f.FieldLabel);
+
+        return (retiredFields, renameMap, activeFieldLabels);
+    }
+
     private Dictionary<string, List<(DateTime Date, double Value, decimal? Min, decimal? Max, bool? IsAbnormal, string? Unit, string? Section)>>
-        ExtractCustomAttributes(List<PatientHealthRecord> records)
+        ExtractCustomAttributes(
+            List<PatientHealthRecord> records,
+            HashSet<string>? retiredFields = null,
+            Dictionary<string, string>? renameMap = null,
+            HashSet<string>? activeFieldLabels = null)
     {
         var result = new Dictionary<string, List<(DateTime Date, double Value, decimal? Min, decimal? Max, bool? IsAbnormal, string? Unit, string? Section)>>(
             StringComparer.OrdinalIgnoreCase);
@@ -385,6 +517,18 @@ public class HealthAnalysisService : IHealthAnalysisService
                     continue;
 
                 var key = attr.FieldLabel;
+                // Apply rename map — unify historical labels with current label
+                if (renameMap != null && renameMap.TryGetValue(key, out var currentName))
+                    key = currentName;
+
+                // 1. Filter by active template fields if whitelist is provided
+                if (activeFieldLabels != null && activeFieldLabels.Count > 0 && !activeFieldLabels.Contains(key))
+                    continue;
+
+                // 2. Skip retired fields
+                if (retiredFields != null && retiredFields.Contains(key))
+                    continue;
+
                 if (!result.ContainsKey(key))
                     result[key] = new List<(DateTime, double, decimal?, decimal?, bool?, string?, string?)>();
 
@@ -515,12 +659,15 @@ public class HealthAnalysisService : IHealthAnalysisService
                     "Temperature" => "°F",
                     "BMI" => "kg/m²",
                     _ => null
-                }
+                },
+                IsAbnormal = IsVitalAbnormal(vName, currentVal, baseline)
             });
         }
 
         // --- Custom Attribute Trends ---
-        var customAttributes = ExtractCustomAttributes(records);
+        var (retiredFields, renameMap, activeFieldLabels) =
+            await GetTemplateFieldContextAsync(patientId);
+        var customAttributes = ExtractCustomAttributes(records, retiredFields, renameMap, activeFieldLabels);
 
         foreach (var (attrName, dataPoints) in customAttributes)
         {
@@ -597,7 +744,8 @@ public class HealthAnalysisService : IHealthAnalysisService
                 HumanInterpretation = GenerateHumanInterpretation(attrName, direction, slope, current),
                 ActionStep = GenerateActionStep(attrName, direction),
                 SectionName = section ?? "Laboratory Results",
-                VitalUnit = dataPoints.Last().Unit
+                VitalUnit = dataPoints.Last().Unit,
+                IsAbnormal = IsCustomAttributeAbnormal(current, min, max, dataPoints.Last().IsAbnormal)
             });
         }
 
@@ -635,8 +783,8 @@ public class HealthAnalysisService : IHealthAnalysisService
         };
 
         // Build lookup dictionaries from pre-loaded data (no further DB hits needed)
-        var masterMedsByNameLower = allMasterMeds
-            .ToDictionary(m => m.Name.ToLower(), m => m, StringComparer.OrdinalIgnoreCase);
+        var masterMedsByName = allMasterMeds
+            .ToDictionary(m => m.Name, m => m, StringComparer.OrdinalIgnoreCase);
 
         foreach (var kvp in medMap)
         {
@@ -655,7 +803,9 @@ public class HealthAnalysisService : IHealthAnalysisService
             }
 
             // Look up metadata from pre-loaded dictionary instead of hitting DB again
-            masterMedsByNameLower.TryGetValue(medName.ToLower(), out var medMeta);
+            var searchName = medName.Trim();
+            masterMedsByName.TryGetValue(searchName, out var medMeta);
+
             // Also try alias lookup if direct name lookup fails
             if (medMeta == null)
             {
@@ -663,7 +813,7 @@ public class HealthAnalysisService : IHealthAnalysisService
                     !string.IsNullOrEmpty(m.Aliases) &&
                     (System.Text.Json.JsonSerializer
                         .Deserialize<List<string>>(m.Aliases) ?? new List<string>())
-                        .Any(a => a.Equals(medName, StringComparison.OrdinalIgnoreCase)));
+                        .Any(a => a.Equals(searchName, StringComparison.OrdinalIgnoreCase)));
             }
 
             var dto = new MedicationCorrelationDto
@@ -724,7 +874,9 @@ public class HealthAnalysisService : IHealthAnalysisService
             }
 
             // --- Custom Attribute Correlations ---
-            var allCustomAttributes = ExtractCustomAttributes(records);
+            var (retiredFieldsMed, renameMapMed, activeFieldLabelsMed) =
+                await GetTemplateFieldContextAsync(patientId);
+            var allCustomAttributes = ExtractCustomAttributes(records, retiredFieldsMed, renameMapMed, activeFieldLabelsMed);
 
             foreach (var (attrName, allPoints) in allCustomAttributes)
             {
@@ -890,7 +1042,9 @@ public class HealthAnalysisService : IHealthAnalysisService
         }
 
         // --- Custom Attribute Abnormality Patterns ---
-        var customAttributes = ExtractCustomAttributes(records);
+        var (retiredFieldsAbn, renameMapAbn, activeFieldLabelsAbn) =
+            await GetTemplateFieldContextAsync(patientId);
+        var customAttributes = ExtractCustomAttributes(records, retiredFieldsAbn, renameMapAbn, activeFieldLabelsAbn);
 
         foreach (var (attrName, dataPoints) in customAttributes)
         {
@@ -1006,7 +1160,9 @@ public class HealthAnalysisService : IHealthAnalysisService
             }
 
             // After existing standard vital abnormality counting, add:
-            var customAttributes = ExtractCustomAttributes(qRecords);
+            var (retiredFieldsTl, renameMapTl, activeFieldLabelsTl) =
+                await GetTemplateFieldContextAsync(patientId);
+            var customAttributes = ExtractCustomAttributes(qRecords, retiredFieldsTl, renameMapTl, activeFieldLabelsTl);
 
             foreach (var (attrName, dataPoints) in customAttributes)
             {
@@ -1076,7 +1232,8 @@ public class HealthAnalysisService : IHealthAnalysisService
                                 && latestRecord.FollowUpDate.Value < DateTime.UtcNow
                                 && !records.Any(r => r.RecordDate > latestRecord.FollowUpDate.Value),
             NextFollowUpDate = latestRecord.FollowUpDate,
-            BaselineReliabilityWarning = baseline != null && baseline.RecordsUsedForBaseline <= 3
+            BaselineReliabilityWarning = baseline != null && baseline.RecordsUsedForBaseline <= 3,
+            PrimaryCondition = latestRecord.Template?.TemplateName ?? "Clinical General Health"
         };
 
         int improvingCount = trends.Count(t => t.Direction == "Improving");
@@ -1106,7 +1263,9 @@ public class HealthAnalysisService : IHealthAnalysisService
         }
 
         // --- Custom Attribute Insights ---
-        var customAttributes = ExtractCustomAttributes(records);
+        var (retiredFieldsSum, renameMapSum, activeFieldLabelsSum) =
+            await GetTemplateFieldContextAsync(patientId);
+        var customAttributes = ExtractCustomAttributes(records, retiredFieldsSum, renameMapSum, activeFieldLabelsSum);
 
         foreach (var (attrName, dataPoints) in customAttributes)
         {

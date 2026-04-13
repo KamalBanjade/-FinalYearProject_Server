@@ -198,7 +198,61 @@ public class TemplateService : ITemplateService
 
             if (request.Schema != null)
             {
-                var newSchemaJson = JsonSerializer.Serialize(request.Schema);
+                // Self-healing: Preserve any retired fields from the old schema that the frontend might have accidentally omitted.
+                try
+                {
+                    var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                    options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+                    var oldSchemaObj = JsonSerializer.Deserialize<TemplateSchemaDTO>(
+                        oldSchema,
+                        options
+                    );
+                    if (oldSchemaObj?.Sections != null && request.Schema.Sections != null)
+                    {
+                        foreach (var oldSection in oldSchemaObj.Sections)
+                        {
+                            var oldRetiredFields = oldSection.Fields?.Where(f => f.IsRetired).ToList() ?? new List<TemplateFieldDTO>();
+                            if (oldRetiredFields.Any())
+                            {
+                                var newSection = request.Schema.Sections.FirstOrDefault(s => s.SectionName == oldSection.SectionName);
+                                if (newSection == null)
+                                {
+                                    newSection = new TemplateSectionDTO 
+                                    { 
+                                        SectionName = oldSection.SectionName, 
+                                        DisplayOrder = oldSection.DisplayOrder,
+                                        Fields = new List<TemplateFieldDTO>()
+                                    };
+                                    request.Schema.Sections.Add(newSection);
+                                }
+                                
+                                newSection.Fields ??= new List<TemplateFieldDTO>();
+                                foreach (var retiredField in oldRetiredFields)
+                                {
+                                    if (!newSection.Fields.Any(f => f.FieldName == retiredField.FieldName))
+                                    {
+                                        newSection.Fields.Add(retiredField);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to self-heal template schema during update.");
+                }
+
+                var newSchemaJson = JsonSerializer.Serialize(
+                    request.Schema,
+                    new JsonSerializerOptions
+                    {
+                        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+                        DefaultIgnoreCondition = 
+                            System.Text.Json.Serialization.JsonIgnoreCondition.Never
+                    }
+                );
                 if (newSchemaJson != oldSchema)
                 {
                     template.TemplateSchema = newSchemaJson;
@@ -424,8 +478,16 @@ public class TemplateService : ITemplateService
     {
         TemplateSchemaDTO schema = new();
         try {
-            schema = JsonSerializer.Deserialize<TemplateSchemaDTO>(t.TemplateSchema) ?? new();
-        } catch {}
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+
+            schema = JsonSerializer.Deserialize<TemplateSchemaDTO>(
+                t.TemplateSchema,
+                options
+            ) ?? new();
+        } catch(Exception ex) {
+            _logger.LogWarning(ex, "Failed to deserialize schema for template {TemplateId}", t.Id);
+        }
 
         return new TemplateDTO
         {

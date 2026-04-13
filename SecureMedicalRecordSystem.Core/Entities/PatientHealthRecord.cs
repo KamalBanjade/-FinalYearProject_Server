@@ -46,6 +46,13 @@ public class PatientHealthRecord : BaseEntity
     public string? TemplateSnapshot { get; set; }
     public bool CreatedFromScratch { get; set; } = true;
 
+    // Patient-Scoped Field Exclusions
+    // JSON array of field_name strings (e.g. ["triglycerides", "hba1c"]) that the doctor
+    // explicitly deleted during a clone/template session for THIS patient only.
+    // Used by HealthAnalysisService to filter the analysis dashboard per-patient
+    // without touching the shared global template.
+    public string? ExcludedFields { get; set; }
+
     // Follow-Up Tracking
     public DateTime? FollowUpDate { get; set; }
     public int? FollowUpDays { get; set; }

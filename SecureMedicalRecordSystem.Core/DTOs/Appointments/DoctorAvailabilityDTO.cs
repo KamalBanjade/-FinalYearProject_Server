@@ -35,10 +35,10 @@ public class SetWorkingHoursDTO
     public DayOfWeek DayOfWeek { get; set; }
     
     [Required]
-    public string StartTime { get; set; } // "09:00"
+    public string StartTime { get; set; } = string.Empty; // "09:00"
     
     [Required]
-    public string EndTime { get; set; } // "17:00"
+    public string EndTime { get; set; } = string.Empty; // "17:00"
 
     public string? BreakStartTime { get; set; } // "12:00"
     public string? BreakEndTime { get; set; } // "13:00"
