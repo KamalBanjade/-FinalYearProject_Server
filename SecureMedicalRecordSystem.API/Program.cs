@@ -184,6 +184,11 @@ try
                 // Prevent cartesian-product SQL explosions when multiple Include() chains exist.
                 // EF Core will execute separate queries per collection navigation instead of one giant JOIN.
                 sqlOptions.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery);
+                // Automatically retry transient SQL errors (e.g. dead pooled connections in background workers).
+                sqlOptions.EnableRetryOnFailure(
+                    maxRetryCount: 3,
+                    maxRetryDelay: TimeSpan.FromSeconds(10),
+                    errorNumbersToAdd: null);
             }));
 
     // Identity Configuration

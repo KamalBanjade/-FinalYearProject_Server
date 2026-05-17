@@ -66,357 +66,393 @@ public class AuthService : IAuthService
 
     public async Task<(bool Success, string Message, RegistrationResponseDTO? Data)> RegisterPatientAsync(RegisterRequestDTO request)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // 1. Check if user exists
-            var existingUser = await _userManager.FindByEmailAsync(request.Email);
-            if (existingUser != null)
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                return (false, "User with this email already exists.", null);
-            }
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    // 1. Check if user exists
+                    var existingUser = await _userManager.FindByEmailAsync(request.Email);
+                    if (existingUser != null)
+                    {
+                        return (false, "User with this email already exists.", null);
+                    }
 
-            // 2. Create ApplicationUser
-            var user = new ApplicationUser
-            {
-                Email = request.Email,
-                UserName = request.Email,
-                FirstName = request.FirstName,
-                LastName = request.LastName,
-                PhoneNumber = request.PhoneNumber,
-                Role = "Patient",
-                Address = request.Address,
-                CreatedAt = DateTime.UtcNow,
-                IsActive = true,
-                RequiresPasswordChange = false
-            };
+                    // 2. Create ApplicationUser
+                    var user = new ApplicationUser
+                    {
+                        Email = request.Email,
+                        UserName = request.Email,
+                        FirstName = request.FirstName,
+                        LastName = request.LastName,
+                        PhoneNumber = request.PhoneNumber,
+                        Role = "Patient",
+                        Address = request.Address,
+                        CreatedAt = DateTime.UtcNow,
+                        IsActive = true,
+                        RequiresPasswordChange = false
+                    };
 
-            // 3. Create in Identity
-            var result = await _userManager.CreateAsync(user, request.Password);
-            if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                return (false, $"Registration failed: {errors}", null);
-            }
+                    // 3. Create in Identity
+                    var result = await _userManager.CreateAsync(user, request.Password);
+                    if (!result.Succeeded)
+                    {
+                        var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                        return (false, $"Registration failed: {errors}", null);
+                    }
 
-            // 4. Add to Patient Role
-            await _userManager.AddToRoleAsync(user, "Patient");
+                    // 4. Add to Patient Role
+                    await _userManager.AddToRoleAsync(user, "Patient");
 
-            // 5. Create Patient Entity
-            var patient = new Patient
-            {
-                UserId = user.Id,
-                DateOfBirth = request.DateOfBirth,
-                Gender = request.Gender
-            };
-            _context.Patients.Add(patient);
+                    // 5. Create Patient Entity
+                    var patient = new Patient
+                    {
+                        UserId = user.Id,
+                        DateOfBirth = request.DateOfBirth,
+                        Gender = request.Gender
+                    };
+                    _context.Patients.Add(patient);
 
-            // 5.1 Mandatory 2FA Setup
-            await _userManager.ResetAuthenticatorKeyAsync(user);
-            await _userManager.UpdateSecurityStampAsync(user);
+                    // 5.1 Mandatory 2FA Setup
+                    await _userManager.ResetAuthenticatorKeyAsync(user);
+                    await _userManager.UpdateSecurityStampAsync(user);
 
-            var totpSecret = await _userManager.GetAuthenticatorKeyAsync(user);
-            user.TOTPSecret = totpSecret;
-            user.TwoFactorEnabled = true;
-            user.TOTPSetupCompleted = false;
-            user.MedicalQRGeneratedAt = DateTime.UtcNow;
-            
-            await _userManager.UpdateAsync(user);
+                    var totpSecret = await _userManager.GetAuthenticatorKeyAsync(user);
+                    user.TOTPSecret = totpSecret;
+                    user.TwoFactorEnabled = true;
+                    user.TOTPSetupCompleted = false;
+                    user.MedicalQRGeneratedAt = DateTime.UtcNow;
+                    
+                    await _userManager.UpdateAsync(user);
 
-            // 6. Generate TOTP QR Data
-            var issuer = "MedicalRecordSystem";
-            var accountName = $"{issuer}:{user.Email}";
-            var totpQRData = $"otpauth://totp/{Uri.EscapeDataString(accountName)}" +
-                             $"?secret={totpSecret}" +
-                             $"&issuer={Uri.EscapeDataString(issuer)}" +
-                             $"&algorithm=SHA1" +
-                             $"&digits=6" +
-                             $"&period=30";
+                    // 6. Generate TOTP QR Data
+                    var issuer = "MedicalRecordSystem";
+                    var accountName = $"{issuer}:{user.Email}";
+                    var totpQRData = $"otpauth://totp/{Uri.EscapeDataString(accountName)}" +
+                                     $"?secret={totpSecret}" +
+                                     $"&issuer={Uri.EscapeDataString(issuer)}" +
+                                     $"&algorithm=SHA1" +
+                                     $"&digits=6" +
+                                     $"&period=30";
 
-            // 7. Generate Medical Access Token
-            var (accessToken, expiresAt) = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
-            var frontendUrl = _urlProvider.FrontendIpBaseUrl;
-            var accessUrl = $"{frontendUrl}/access/{accessToken}";
+                    // 7. Generate Medical Access Token
+                    var (accessToken, expiresAt) = await _qrTokenService.GenerateNormalAccessTokenAsync(patient.Id, 30);
+                    var frontendUrl = _urlProvider.FrontendIpBaseUrl;
+                    var accessUrl = $"{frontendUrl}/access/{accessToken}";
 
-            // 8. Generate Confirmation Token
-            var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-            var template = _urlProvider.EmailConfirmationLinkTemplate;
-            
-            var confirmationLink = template
-                .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(token))
-                .Replace("[USERID]", user.Id.ToString());
+                    // 8. Generate Confirmation Token
+                    var token = await _userManager.GenerateEmailConfirmationTokenAsync(user);
+                    var template = _urlProvider.EmailConfirmationLinkTemplate;
+                    
+                    var confirmationLink = template
+                        .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(token))
+                        .Replace("[USERID]", user.Id.ToString());
 
-            // 9. Log Action
-            await _auditLogService.LogAsync(user.Id, "Patient Registration", "Registered as Patient with mandatory 2FA", "N/A", "System");
+                    // 9. Log Action
+                    await _auditLogService.LogAsync(user.Id, "Patient Registration", "Registered as Patient with mandatory 2FA", "N/A", "System");
 
-            await transaction.CommitAsync();
+                    await transaction.CommitAsync();
 
-            // 10. Send Background Email (ONLY after successful commit)
-            var emailAddr = user.Email!;
-            _ = Task.Run(async () =>
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
-                try { await emailSvc.SendEmailConfirmationAsync(emailAddr, confirmationLink); }
-                catch (Exception ex) { Log.Error(ex, "Background registration email failed for {Email}", emailAddr); }
-            });
+                    // 10. Send Background Email (ONLY after successful commit)
+                    var emailAddr = user.Email!;
+                    _ = Task.Run(async () =>
+                    {
+                        using var scope = _scopeFactory.CreateScope();
+                        var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                        try { await emailSvc.SendEmailConfirmationAsync(emailAddr, confirmationLink); }
+                        catch (Exception ex) { Log.Error(ex, "Background registration email failed for {Email}", emailAddr); }
+                    });
 
-            return (true, "Account created - complete security setup", new RegistrationResponseDTO
-            {
-                UserId = user.Id,
-                Email = user.Email!,
-                FirstName = user.FirstName,
-                LastName = user.LastName,
-                RequiresSetup = true,
-                
-                // QR Code 1 Data
-                TOTPSetupQRData = totpQRData,
-                TOTPSecretManual = FormatTOTPSecret(totpSecret),
-                
-                // QR Code 2 Data
-                MedicalAccessToken = accessToken,
-                MedicalAccessURL = accessUrl,
-                MedicalAccessExpiresAt = expiresAt
+                    return (true, "Account created - complete security setup", new RegistrationResponseDTO
+                    {
+                        UserId = user.Id,
+                        Email = user.Email!,
+                        FirstName = user.FirstName,
+                        LastName = user.LastName,
+                        RequiresSetup = true,
+                        
+                        // QR Code 1 Data
+                        TOTPSetupQRData = totpQRData,
+                        TOTPSecretManual = FormatTOTPSecret(totpSecret),
+                        
+                        // QR Code 2 Data
+                        MedicalAccessToken = accessToken,
+                        MedicalAccessURL = accessUrl,
+                        MedicalAccessExpiresAt = expiresAt
+                    });
+                }
+                catch (Exception)
+                {
+                    try { await transaction.RollbackAsync(); } catch { /* Ignore */ }
+                    throw;
+                }
             });
         }
         catch (Exception ex)
         {
-            try { await transaction.RollbackAsync(); } catch { /* Ignore */ }
             return (false, $"An error occurred during registration: {ex.Message}", null);
         }
     }
 
+
     public async Task<(bool Success, string Message)> CreatePatientAccountAsync(CreatePatientRequestDTO request, Guid? primaryDoctorId, Guid actorUserId)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // 1. Check if user exists
-            var existingUser = await _userManager.FindByEmailAsync(request.Email);
-            if (existingUser != null)
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                return (false, "User with this email already exists.");
-            }
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    // 1. Check if user exists
+                    var existingUser = await _userManager.FindByEmailAsync(request.Email);
+                    if (existingUser != null)
+                    {
+                        return (false, "User with this email already exists.");
+                    }
 
-            // 2. Generate Temporary Password
-            var tempPassword = GenerateSecurePassword();
+                    // 2. Generate Temporary Password
+                    var tempPassword = GenerateSecurePassword();
 
-            // 3. Create ApplicationUser
-            var user = new ApplicationUser
-            {
-                Email = request.Email,
-                UserName = request.Email,
-                FirstName = request.FirstName,
-                LastName = request.LastName,
-                PhoneNumber = request.PhoneNumber,
-                Role = "Patient",
-                CreatedAt = DateTime.UtcNow,
-                IsActive = true,
-                RequiresPasswordChange = true, // Force password change
-                EmailConfirmed = true // Created by facility
-            };
+                    // 3. Create ApplicationUser
+                    var user = new ApplicationUser
+                    {
+                        Email = request.Email,
+                        UserName = request.Email,
+                        FirstName = request.FirstName,
+                        LastName = request.LastName,
+                        PhoneNumber = request.PhoneNumber,
+                        Role = "Patient",
+                        CreatedAt = DateTime.UtcNow,
+                        IsActive = true,
+                        RequiresPasswordChange = true, // Force password change
+                        EmailConfirmed = true // Created by facility
+                    };
 
-            // 4. Create in Identity
-            var result = await _userManager.CreateAsync(user, tempPassword);
-            if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                return (false, $"Failed to create patient account: {errors}");
-            }
+                    // 4. Create in Identity
+                    var result = await _userManager.CreateAsync(user, tempPassword);
+                    if (!result.Succeeded)
+                    {
+                        var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                        return (false, $"Failed to create patient account: {errors}");
+                    }
 
-            // 5. Add to Patient Role
-            await _userManager.AddToRoleAsync(user, "Patient");
+                    // 5. Add to Patient Role
+                    await _userManager.AddToRoleAsync(user, "Patient");
 
-            // 6. Create Patient Entity
-            var patient = new Patient
-            {
-                UserId = user.Id,
-                DateOfBirth = request.DateOfBirth,
-                Gender = request.Gender,
-                PrimaryDoctorId = primaryDoctorId
-            };
-            _context.Patients.Add(patient);
+                    // 6. Create Patient Entity
+                    var patient = new Patient
+                    {
+                        UserId = user.Id,
+                        DateOfBirth = request.DateOfBirth,
+                        Gender = request.Gender,
+                        PrimaryDoctorId = primaryDoctorId
+                    };
+                    _context.Patients.Add(patient);
 
-            // 6.1 Setup 2FA Base (They will complete it on first login)
-            await _userManager.ResetAuthenticatorKeyAsync(user);
-            await _userManager.UpdateSecurityStampAsync(user);
-            
-            var totpSecret = await _userManager.GetAuthenticatorKeyAsync(user);
-            user.TOTPSecret = totpSecret;
-            user.TwoFactorEnabled = true;
-            user.TOTPSetupCompleted = false;
-            user.MedicalQRGeneratedAt = DateTime.UtcNow;
+                    // 6.1 Setup 2FA Base (They will complete it on first login)
+                    await _userManager.ResetAuthenticatorKeyAsync(user);
+                    await _userManager.UpdateSecurityStampAsync(user);
+                    
+                    var totpSecret = await _userManager.GetAuthenticatorKeyAsync(user);
+                    user.TOTPSecret = totpSecret;
+                    user.TwoFactorEnabled = true;
+                    user.TOTPSetupCompleted = false;
+                    user.MedicalQRGeneratedAt = DateTime.UtcNow;
 
-            await _userManager.UpdateAsync(user);
-            
-            await _context.SaveChangesAsync();
+                    await _userManager.UpdateAsync(user);
+                    
+                    await _context.SaveChangesAsync();
 
-            // 7. Generate Reset Token for Patient to set password
-            var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
-            
-            // 8. Generate Invitation Link
-            var template = _urlProvider.PasswordResetLinkTemplate;
-            var resetLink = template
-                .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(resetToken))
-                .Replace("[USERID]", user.Id.ToString());
+                    // 7. Generate Reset Token for Patient to set password
+                    var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+                    
+                    // 8. Generate Invitation Link
+                    var template = _urlProvider.PasswordResetLinkTemplate;
+                    var resetLink = template
+                        .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(resetToken))
+                        .Replace("[USERID]", user.Id.ToString());
 
-            // 9. Log Action
-            var creatorType = primaryDoctorId.HasValue ? "Doctor" : "Admin";
-            await _auditLogService.LogAsync(actorUserId, "Patient Created", $"Created patient account for {request.Email} by {creatorType}", "N/A", "System");
+                    // 9. Log Action
+                    var creatorType = primaryDoctorId.HasValue ? "Doctor" : "Admin";
+                    await _auditLogService.LogAsync(actorUserId, "Patient Created", $"Created patient account for {request.Email} by {creatorType}", "N/A", "System");
 
-            await transaction.CommitAsync();
+                    await transaction.CommitAsync();
 
-            // 10. Send Invitation Email (Background - ONLY after successful commit)
-            var emailAddr = user.Email!;
-            var fullName = $"{user.FirstName} {user.LastName}";
-            _ = Task.Run(async () =>
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
-                try 
-                { 
-                    await emailSvc.SendPatientInvitationEmailAsync(emailAddr, fullName, tempPassword, resetLink); 
+                    // 10. Send Invitation Email (Background - ONLY after successful commit)
+                    var emailAddr = user.Email!;
+                    var fullName = $"{user.FirstName} {user.LastName}";
+                    _ = Task.Run(async () =>
+                    {
+                        using var scope = _scopeFactory.CreateScope();
+                        var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                        try 
+                        { 
+                            await emailSvc.SendPatientInvitationEmailAsync(emailAddr, fullName, tempPassword, resetLink); 
+                        }
+                        catch (Exception ex) { Log.Error(ex, "Background patient invitation email failed for {Email}", emailAddr); }
+                    });
+
+                    return (true, "Patient created successfully and invitation email sent.");
                 }
-                catch (Exception ex) { Log.Error(ex, "Background patient invitation email failed for {Email}", emailAddr); }
+                catch (Exception)
+                {
+                    try { await transaction.RollbackAsync(); } catch { /* Ignore */ }
+                    throw;
+                }
             });
-
-            return (true, "Patient created successfully and invitation email sent.");
         }
         catch (Exception ex)
         {
-            try { await transaction.RollbackAsync(); } catch { /* Ignore */ }
-            return (false, $"An error occurred while creating patient: {ex.Message}");
+            return (false, $"An error occurred during account creation: {ex.Message}");
         }
     }
+
 
     public async Task<(bool Success, string Message)> InviteDoctorAsync(InviteDoctorRequestDTO request, Guid adminUserId)
     {
-        using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // 1. Check permissions (already handled by Controller policy but double check)
-            var adminUser = await _userManager.FindByIdAsync(adminUserId.ToString());
-            if (adminUser == null || adminUser.Role != "Admin")
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                return (false, "Only administrators can invite doctors.");
-            }
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
+                {
+                    // 1. Check permissions (already handled by Controller policy but double check)
+                    var adminUser = await _userManager.FindByIdAsync(adminUserId.ToString());
+                    if (adminUser == null || adminUser.Role != "Admin")
+                    {
+                        return (false, "Only administrators can invite doctors.");
+                    }
 
-            // 2. Check if user exists
-            var existingUser = await _userManager.FindByEmailAsync(request.Email);
-            if (existingUser != null)
-            {
-                return (false, "User with this email already exists.");
-            }
+                    // 2. Check if user exists
+                    var existingUser = await _userManager.FindByEmailAsync(request.Email);
+                    if (existingUser != null)
+                    {
+                        return (false, "User with this email already exists.");
+                    }
 
-            // 3. Check NMC License
-            var existingDoctor = await _context.Doctors.AnyAsync(d => d.NMCLicense == request.NMCLicense);
-            if (existingDoctor)
-            {
-                return (false, "A doctor with this NMC License already exists.");
-            }
+                    // 3. Check NMC License
+                    var existingDoctor = await _context.Doctors.AnyAsync(d => d.NMCLicense == request.NMCLicense);
+                    if (existingDoctor)
+                    {
+                        return (false, "A doctor with this NMC License already exists.");
+                    }
 
-            // 4. Generate Temporary Password
-            var tempPassword = GenerateSecurePassword();
+                    // 4. Generate Temporary Password
+                    var tempPassword = GenerateSecurePassword();
 
-            // 5. Create ApplicationUser
-            var user = new ApplicationUser
-            {
-                Email = request.Email,
-                UserName = request.Email,
-                FirstName = request.FirstName,
-                LastName = request.LastName,
-                PhoneNumber = request.PhoneNumber,
-                Role = "Doctor",
-                CreatedAt = DateTime.UtcNow,
-                IsActive = true,
-                RequiresPasswordChange = true, // Force password change
-                EmailConfirmed = true // Admin-created accounts are pre-verified
-            };
+                    // 5. Create ApplicationUser
+                    var user = new ApplicationUser
+                    {
+                        Email = request.Email,
+                        UserName = request.Email,
+                        FirstName = request.FirstName,
+                        LastName = request.LastName,
+                        PhoneNumber = request.PhoneNumber,
+                        Role = "Doctor",
+                        CreatedAt = DateTime.UtcNow,
+                        IsActive = true,
+                        RequiresPasswordChange = true, // Force password change
+                        EmailConfirmed = true // Admin-created accounts are pre-verified
+                    };
 
-            // 6. Create in Identity
-            var result = await _userManager.CreateAsync(user, tempPassword);
-            if (!result.Succeeded)
-            {
-                var errors = string.Join(", ", result.Errors.Select(e => e.Description));
-                return (false, $"Failed to create doctor account: {errors}");
-            }
+                    // 6. Create in Identity
+                    var result = await _userManager.CreateAsync(user, tempPassword);
+                    if (!result.Succeeded)
+                    {
+                        var errors = string.Join(", ", result.Errors.Select(e => e.Description));
+                        return (false, $"Failed to create doctor account: {errors}");
+                    }
 
-            // 7. Add to Doctor Role
-            await _userManager.AddToRoleAsync(user, "Doctor");
+                    // 7. Add to Doctor Role
+                    await _userManager.AddToRoleAsync(user, "Doctor");
 
-            // 8. Generate RSA Key Pair for digital signatures
-            var keyPair = await _keyManagementService.GenerateRsaKeyPairAsync();
+                    // 8. Generate RSA Key Pair for digital signatures
+                    var keyPair = await _keyManagementService.GenerateRsaKeyPairAsync();
 
-            // 8.1 Validate keys before saving
-            var isValidKey = await _keyManagementService.ValidateKeyPairAsync(keyPair.PublicKey, keyPair.EncryptedPrivateKey);
-            if (!isValidKey)
-            {
-                Log.Error("Generated key pair validation failed for doctor {Email}", request.Email);
-                throw new InvalidOperationException("Key pair validation failed");
-            }
-            // 8b. Find or Create Department by Name
-            var departmentEntity = await _context.Departments.FirstOrDefaultAsync(d => d.Name == request.Department);
-            if (departmentEntity == null)
-            {
-                // Fallback: create the department if it doesn't exist to prevent failure
-                departmentEntity = new Department { Name = request.Department, Description = "Auto-generated" };
-                _context.Departments.Add(departmentEntity);
-                await _context.SaveChangesAsync();
-            }
+                    // 8.1 Validate keys before saving
+                    var isValidKey = await _keyManagementService.ValidateKeyPairAsync(keyPair.PublicKey, keyPair.EncryptedPrivateKey);
+                    if (!isValidKey)
+                    {
+                        Log.Error("Generated key pair validation failed for doctor {Email}", request.Email);
+                        throw new InvalidOperationException("Key pair validation failed");
+                    }
+                    // 8b. Find or Create Department by Name
+                    var departmentEntity = await _context.Departments.FirstOrDefaultAsync(d => d.Name == request.Department);
+                    if (departmentEntity == null)
+                    {
+                        // Fallback: create the department if it doesn't exist to prevent failure
+                        departmentEntity = new Department { Name = request.Department, Description = "Auto-generated" };
+                        _context.Departments.Add(departmentEntity);
+                        await _context.SaveChangesAsync();
+                    }
 
-            // 9. Create Doctor Entity
-            var doctor = new Doctor
-            {
-                UserId = user.Id,
-                NMCLicense = request.NMCLicense,
-                DepartmentId = departmentEntity.Id,
-                Specialization = request.Specialization,
-                QualificationDetails = request.QualificationDetails,
-                PublicKey = keyPair.PublicKey,
-                PrivateKeyEncrypted = keyPair.EncryptedPrivateKey
-            };
-            _context.Doctors.Add(doctor);
+                    // 9. Create Doctor Entity
+                    var doctor = new Doctor
+                    {
+                        UserId = user.Id,
+                        NMCLicense = request.NMCLicense,
+                        DepartmentId = departmentEntity.Id,
+                        Specialization = request.Specialization,
+                        QualificationDetails = request.QualificationDetails,
+                        PublicKey = keyPair.PublicKey,
+                        PrivateKeyEncrypted = keyPair.EncryptedPrivateKey
+                    };
+                    _context.Doctors.Add(doctor);
 
-            Log.Information("RSA-2048 key pair generated and validated for doctor {Email}", request.Email);
+                    Log.Information("RSA-2048 key pair generated and validated for doctor {Email}", request.Email);
 
-            await _context.SaveChangesAsync();
+                    await _context.SaveChangesAsync();
 
-            // 9. Generate Reset Token for Doctor to set password immediately
-            var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
-            
-            // 10. Generate Invitation Link (Password Reset Link)
-            var template = _urlProvider.PasswordResetLinkTemplate;
-            var resetLink = template
-                .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(resetToken))
-                .Replace("[USERID]", user.Id.ToString());
+                    // 9. Generate Reset Token for Doctor to set password immediately
+                    var resetToken = await _userManager.GeneratePasswordResetTokenAsync(user);
+                    
+                    // 10. Generate Invitation Link (Password Reset Link)
+                    var template = _urlProvider.PasswordResetLinkTemplate;
+                    var resetLink = template
+                        .Replace("[TOKEN]", System.Net.WebUtility.UrlEncode(resetToken))
+                        .Replace("[USERID]", user.Id.ToString());
 
-            // 11. Log Action
-            await _auditLogService.LogAsync(adminUserId, "Doctor Invited", $"Invited doctor {request.Email}", "N/A", "System");
+                    // 11. Log Action
+                    await _auditLogService.LogAsync(adminUserId, "Doctor Invited", $"Invited doctor {request.Email}", "N/A", "System");
 
-            await transaction.CommitAsync();
+                    await transaction.CommitAsync();
 
-            // 12. Send Invitation Email (Background - ONLY after successful commit)
-            var emailAddr = user.Email!;
-            var fullName = $"{user.FirstName} {user.LastName}";
-            _ = Task.Run(async () =>
-            {
-                using var scope = _scopeFactory.CreateScope();
-                var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
-                try 
-                { 
-                    await emailSvc.SendDoctorInvitationEmailAsync(emailAddr, fullName, tempPassword, resetLink); 
+                    // 12. Send Invitation Email (Background - ONLY after successful commit)
+                    var emailAddr = user.Email!;
+                    var fullName = $"{user.FirstName} {user.LastName}";
+                    _ = Task.Run(async () =>
+                    {
+                        using var scope = _scopeFactory.CreateScope();
+                        var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                        try 
+                        { 
+                            await emailSvc.SendDoctorInvitationEmailAsync(emailAddr, fullName, tempPassword, resetLink); 
+                        }
+                        catch (Exception ex) { Log.Error(ex, "Background doctor invitation email failed for {Email}", emailAddr); }
+                    });
+
+                    return (true, "Doctor invited successfully.");
                 }
-                catch (Exception ex) { Log.Error(ex, "Background doctor invitation email failed for {Email}", emailAddr); }
+                catch (Exception)
+                {
+                    try { await transaction.RollbackAsync(); } catch { /* Ignore */ }
+                    throw;
+                }
             });
-
-            return (true, "Doctor invited successfully.");
         }
         catch (Exception ex)
         {
-            try { await transaction.RollbackAsync(); } catch { /* Ignore */ }
-            return (false, $"An error occurred while inviting doctor: {ex.Message}");
+            return (false, $"An error occurred during doctor invitation: {ex.Message}");
         }
     }
+
 
     public async Task<(bool Success, string Message, LoginResponseDTO? Data)> LoginAsync(LoginRequestDTO request)
     {

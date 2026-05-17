@@ -17,9 +17,8 @@ public class CancelAppointmentDTO
 
 public class CompleteAppointmentDTO
 {
-    [Required]
     [MaxLength(1000)]
-    public string ConsultationNotes { get; set; } = string.Empty;
+    public string? ConsultationNotes { get; set; }
 }
 
 public class LinkRecordDTO

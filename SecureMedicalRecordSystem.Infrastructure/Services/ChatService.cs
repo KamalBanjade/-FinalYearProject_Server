@@ -11,11 +11,26 @@ public class ChatService : IChatService
 {
     private readonly ApplicationDbContext _context;
     private readonly ILogger<ChatService> _logger;
+    private readonly IEncryptionService _encryption;
 
-    public ChatService(ApplicationDbContext context, ILogger<ChatService> logger)
+    public ChatService(
+        ApplicationDbContext context,
+        ILogger<ChatService> logger,
+        IEncryptionService encryption)
     {
         _context = context;
         _logger = logger;
+        _encryption = encryption;
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────
+
+    /// <summary>Safely decrypt a message; falls back to ciphertext if decryption fails (e.g. legacy plaintext rows).</summary>
+    private string SafeDecrypt(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        try   { return _encryption.Decrypt(text); }
+        catch { return text; } // legacy plaintext row — return as-is
     }
 
     // ────────────────────────────────────────────────────────────
@@ -26,13 +41,16 @@ public class ChatService : IChatService
     {
         var resolvedReceiverId = await ResolveUserIdAsync(receiverId) ?? receiverId;
 
+        // Encrypt the message content before persisting
+        var encryptedText = _encryption.Encrypt(messageText.Trim());
+
         var message = new ChatMessage
         {
             Id = Guid.NewGuid(),
             SenderId = senderId,
             ReceiverId = resolvedReceiverId,
             SenderRole = senderRole,
-            MessageText = messageText.Trim(),
+            MessageText = encryptedText,
             SentAt = DateTime.UtcNow,
             IsRead = false,
             CreatedBy = senderId.ToString()
@@ -51,7 +69,7 @@ public class ChatService : IChatService
             SenderName = sender != null ? $"{sender.FirstName} {sender.LastName}" : "Unknown",
             SenderRole = message.SenderRole,
             SenderProfilePictureUrl = sender?.ProfilePictureUrl,
-            MessageText = message.MessageText,
+            MessageText = messageText.Trim(), // return the original plaintext to the caller
             SentAt = message.SentAt,
             IsRead = message.IsRead
         };
@@ -61,29 +79,32 @@ public class ChatService : IChatService
     {
         var resolvedOtherUserId = await ResolveUserIdAsync(otherUserId) ?? otherUserId;
 
-        var messages = await _context.ChatMessages
+        var rawMessages = await _context.ChatMessages
             .IgnoreQueryFilters() // we apply our own IsDeleted check below
+            .Include(m => m.Sender)
             .Where(m => !m.IsDeleted &&
                         ((m.SenderId == userId && m.ReceiverId == resolvedOtherUserId) ||
                          (m.SenderId == resolvedOtherUserId && m.ReceiverId == userId)))
             .OrderByDescending(m => m.SentAt)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
-            .Select(m => new MessageDTO
-            {
-                Id = m.Id,
-                SenderId = m.SenderId,
-                ReceiverId = m.ReceiverId,
-                SenderName = m.Sender.FirstName + " " + m.Sender.LastName,
-                SenderRole = m.SenderRole,
-                SenderProfilePictureUrl = m.Sender.ProfilePictureUrl,
-                MessageText = m.MessageText,
-                SentAt = m.SentAt,
-                IsRead = m.IsRead,
-                ReadAt = m.ReadAt,
-                IsEdited = m.IsEdited
-            })
             .ToListAsync();
+
+        // Project to DTOs in memory so we can decrypt each message
+        var messages = rawMessages.Select(m => new MessageDTO
+        {
+            Id = m.Id,
+            SenderId = m.SenderId,
+            ReceiverId = m.ReceiverId,
+            SenderName = m.Sender.FirstName + " " + m.Sender.LastName,
+            SenderRole = m.SenderRole,
+            SenderProfilePictureUrl = m.Sender.ProfilePictureUrl,
+            MessageText = SafeDecrypt(m.MessageText),
+            SentAt = m.SentAt,
+            IsRead = m.IsRead,
+            ReadAt = m.ReadAt,
+            IsEdited = m.IsEdited
+        }).ToList();
 
         // Return in chronological order (newest at bottom)
         return messages.OrderBy(m => m.SentAt).ToList();
@@ -110,13 +131,19 @@ public class ChatService : IChatService
             var otherUser = await _context.Users.FindAsync(item.OtherUserId);
             if (otherUser == null) continue;
 
+            string name = $"{otherUser.FirstName} {otherUser.LastName}";
+            if (otherUser.Role == "Doctor" && !name.StartsWith("Dr.", StringComparison.OrdinalIgnoreCase))
+            {
+                name = "Dr. " + name;
+            }
+
             dtos.Add(new ConversationDTO
             {
                 OtherUserId = item.OtherUserId,
-                OtherUserName = $"{otherUser.FirstName} {otherUser.LastName}",
+                OtherUserName = name,
                 OtherUserRole = otherUser.Role,
                 OtherUserProfilePictureUrl = otherUser.ProfilePictureUrl,
-                LastMessageText = item.LastMessageText,
+                LastMessageText = SafeDecrypt(item.LastMessageText ?? string.Empty), // decrypt preview
                 LastMessageAt = item.LastMessageAt,
                 UnreadCount = item.UnreadCount,
                 IsOnline = await IsUserOnlineAsync(item.OtherUserId.ToString()),
@@ -143,7 +170,7 @@ public class ChatService : IChatService
             SenderName = $"{message.Sender.FirstName} {message.Sender.LastName}",
             SenderRole = message.SenderRole,
             SenderProfilePictureUrl = message.Sender.ProfilePictureUrl,
-            MessageText = message.MessageText,
+            MessageText = SafeDecrypt(message.MessageText), // decrypt before returning
             SentAt = message.SentAt,
             IsRead = message.IsRead,
             ReadAt = message.ReadAt,

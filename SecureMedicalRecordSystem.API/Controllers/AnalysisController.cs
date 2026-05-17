@@ -77,6 +77,16 @@ public class AnalysisController : ControllerBase
         return Ok(result);
     }
 
+    [HttpGet("patient/{patientId}/full")]
+    public async Task<IActionResult> GetFullAnalysis(Guid patientId)
+    {
+        var effectiveId = await GetEffectivePatientId(patientId);
+        if (effectiveId == Guid.Empty) return Forbid();
+        
+        var result = await _analysisService.GetFullAnalysisAsync(effectiveId);
+        return Ok(result);
+    }
+
     [HttpPost("patient/{patientId}/report/generate")]
     public async Task<IActionResult> GenerateReport(Guid patientId, [FromQuery] string patientFullName)
     {

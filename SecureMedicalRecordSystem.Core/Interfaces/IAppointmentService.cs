@@ -40,7 +40,7 @@ public interface IAppointmentService
 
     Task<(bool Success, string Message)> CompleteAppointmentAsync(
         Guid appointmentId, 
-        string consultationNotes, 
+        string? consultationNotes, 
         Guid requestingUserId);
 
     Task<(bool Success, string Message)> ConfirmAppointmentAsync(
@@ -64,6 +64,8 @@ public interface IAppointmentService
         Guid? excludeAppointmentId = null);
 
     Task<int> CheckAndTransitionAppointmentStatusesAsync();
+
+    Task<(bool Success, string Message)> MarkAsNoShowAsync(Guid appointmentId, Guid requestingUserId);
 
     Task<(bool Success, string Message, SmartDoctorSuggestionDTO? Data)> GetSmartDoctorSuggestionsAsync(
         Guid requestingUserId);

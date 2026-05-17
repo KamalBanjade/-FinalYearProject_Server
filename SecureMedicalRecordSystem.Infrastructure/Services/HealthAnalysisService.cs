@@ -11,13 +11,15 @@ public class HealthAnalysisService : IHealthAnalysisService
 {
     private readonly ApplicationDbContext _context;
     private readonly IPrescriptionService _prescriptionService;
-
+    private readonly ICachingService _cache;
     public HealthAnalysisService(
         ApplicationDbContext context,
-        IPrescriptionService prescriptionService)
+        IPrescriptionService prescriptionService,
+        ICachingService cache)
     {
         _context = context;
         _prescriptionService = prescriptionService;
+        _cache = cache;
     }
 
     private static readonly Dictionary<string, (double Min, double Max)> ClinicalNormals = new()
@@ -155,7 +157,12 @@ public class HealthAnalysisService : IHealthAnalysisService
     private async Task<PatientVitalBaseline?> LoadBaselineAsync(Guid patientId)
     {
         if (_cachedPatientId == patientId && _cachedBaseline != null) return _cachedBaseline;
-        _cachedBaseline = await _context.PatientVitalBaselines.FirstOrDefaultAsync(b => b.PatientId == patientId);
+
+        var cacheKey = $"patient:baseline:{patientId}";
+        _cachedBaseline = await _cache.GetOrSetAsync(cacheKey, async () => 
+            await _context.PatientVitalBaselines.AsNoTracking().FirstOrDefaultAsync(b => b.PatientId == patientId),
+            TimeSpan.FromMinutes(2));
+
         return _cachedBaseline;
     }
 
@@ -163,29 +170,45 @@ public class HealthAnalysisService : IHealthAnalysisService
     {
         if (_cachedPatientId == patientId && _cachedRecords != null) return _cachedRecords;
 
-        _cachedRecords = await _context.PatientHealthRecords
-            .Include(r => r.Patient)
-            .Include(r => r.Prescriptions)
-            .Include(r => r.CustomAttributes)
-            .Include(r => r.Template)
-            .Where(r => r.PatientId == patientId && !r.IsDeleted)
-            .OrderBy(r => r.RecordDate)
-            .ToListAsync();
+        var cacheKey = $"patient:records:analysis:{patientId}";
+        
+        // We use a slightly longer expiration for the record list since it's the heaviest load
+        _cachedRecords = await _cache.GetOrSetAsync(cacheKey, async () => 
+        {
+            return await _context.PatientHealthRecords
+                .AsNoTracking()
+                .Include(r => r.Prescriptions)
+                .Include(r => r.CustomAttributes)
+                .Include(r => r.Template)
+                .Where(r => r.PatientId == patientId && !r.IsDeleted)
+                .OrderBy(r => r.RecordDate)
+                .ToListAsync();
+        }, TimeSpan.FromSeconds(30));
 
         _cachedPatientId = patientId;
-        return _cachedRecords;
+        return _cachedRecords ?? new List<PatientHealthRecord>();
     }
 
     private async Task<List<CommonLabUnit>> LoadLabUnitsAsync()
     {
-        _cachedLabUnits ??= await _context.CommonLabUnits.AsNoTracking().ToListAsync();
-        return _cachedLabUnits;
+        if (_cachedLabUnits != null) return _cachedLabUnits;
+        
+        _cachedLabUnits = await _cache.GetOrSetAsync("master:labunits", async () => 
+            await _context.CommonLabUnits.AsNoTracking().ToListAsync(),
+            TimeSpan.FromHours(1));
+
+        return _cachedLabUnits ?? new List<CommonLabUnit>();
     }
 
     private async Task<List<MasterMedication>> LoadMasterMedsAsync()
     {
-        _cachedMasterMeds ??= await _context.MasterMedications.AsNoTracking().ToListAsync();
-        return _cachedMasterMeds;
+        if (_cachedMasterMeds != null) return _cachedMasterMeds;
+
+        _cachedMasterMeds = await _cache.GetOrSetAsync("master:medications", async () => 
+            await _context.MasterMedications.AsNoTracking().ToListAsync(),
+            TimeSpan.FromHours(1));
+
+        return _cachedMasterMeds ?? new List<MasterMedication>();
     }
 
     private double LinearRegressionSlope(List<double> values)
@@ -372,125 +395,119 @@ public class HealthAnalysisService : IHealthAnalysisService
                          HashSet<string> ActiveFieldLabels)>
         GetTemplateFieldContextAsync(Guid patientId)
     {
-        // Find the most recently used template for this patient
-        var latestRecord = await _context.PatientHealthRecords
-            .Where(r => r.PatientId == patientId &&
-                        !r.IsDeleted &&
-                        r.TemplateId != null)
-            .OrderByDescending(r => r.RecordDate)
-            .FirstOrDefaultAsync();
-
-        var activeFieldLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        if (latestRecord?.TemplateId == null)
-            return (new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                    activeFieldLabels);
-
-        var template = await _context.Templates
-            .AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Id == latestRecord.TemplateId);
-
-        if (template == null || string.IsNullOrEmpty(template.TemplateSchema))
-            return (new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                    activeFieldLabels);
-
-        TemplateSchemaDTO? schema = null;
-        try
+        var cacheKey = $"patient:template:context:{patientId}";
+        var result = await _cache.GetOrSetAsync(cacheKey, async () => 
         {
-            schema = System.Text.Json.JsonSerializer.Deserialize<TemplateSchemaDTO>(
-                template.TemplateSchema,
-                new System.Text.Json.JsonSerializerOptions
-                {
-                    PropertyNameCaseInsensitive = true
-                });
-        }
-        catch { /* malformed schema — treat as no restrictions */ }
+            // Find the most recently used template for this patient
+            var latestRecord = await _context.PatientHealthRecords
+                .Where(r => r.PatientId == patientId &&
+                            !r.IsDeleted &&
+                            r.TemplateId != null)
+                .OrderByDescending(r => r.RecordDate)
+                .FirstOrDefaultAsync();
 
-        if (schema == null)
-            return (new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                    new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
-                    activeFieldLabels);
+            var activeFieldLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        var retiredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var renameMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        // Maps oldLabel → currentLabel
+            if (latestRecord?.TemplateId == null)
+                return (new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                        activeFieldLabels);
 
-        foreach (var section in schema.Sections)
-        {
-            foreach (var field in section.Fields)
-            {
-                // Collect retired field labels
-                if (field.IsRetired)
-                {
-                    retiredFields.Add(field.FieldLabel);
-                    // Also add any historical names for this field
-                    if (field.RenameHistory != null)
-                        foreach (var oldName in field.RenameHistory)
-                            retiredFields.Add(oldName);
-                }
+            var template = await _context.Templates
+                .AsNoTracking()
+                .FirstOrDefaultAsync(t => t.Id == latestRecord.TemplateId);
 
-                // Build rename map: oldName → currentLabel
-                if (field.RenameHistory != null && field.RenameHistory.Count > 0)
-                {
-                    foreach (var oldName in field.RenameHistory)
-                    {
-                        if (!retiredFields.Contains(oldName))
-                            renameMap[oldName] = field.FieldLabel;
-                    }
-                }
-            }
-        }
+            if (template == null || string.IsNullOrEmpty(template.TemplateSchema))
+                return (new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                        activeFieldLabels);
 
-        // ── Patient-Scoped Exclusions ─────────────────────────────────────────────
-        // Read ExcludedFields from the LATEST record for this patient.
-        // These are fields the doctor explicitly deleted in a clone/template session —
-        // stored per-record so the global template is never mutated.
-        // We look back across the last 10 records to accumulate all exclusions
-        // (a later visit can re-add a field by simply measuring it without excluding it).
-        var recentRecords = await _context.PatientHealthRecords
-            .Where(r => r.PatientId == patientId && !r.IsDeleted && !string.IsNullOrEmpty(r.ExcludedFields))
-            .OrderByDescending(r => r.RecordDate)
-            .Take(10)
-            .Select(r => r.ExcludedFields)
-            .ToListAsync();
-
-        foreach (var excludedJson in recentRecords)
-        {
+            TemplateSchemaDTO? schema = null;
             try
             {
-                var excludedNames = System.Text.Json.JsonSerializer.Deserialize<List<string>>(excludedJson!);
-                if (excludedNames != null)
-                {
-                    // excluded field names are field_name (snake_case).
-                    foreach (var fieldName in excludedNames)
+                schema = System.Text.Json.JsonSerializer.Deserialize<TemplateSchemaDTO>(
+                    template.TemplateSchema,
+                    new System.Text.Json.JsonSerializerOptions
                     {
-                        retiredFields.Add(fieldName);
-                        foreach (var section in schema.Sections)
+                        PropertyNameCaseInsensitive = true
+                    });
+            }
+            catch { /* malformed schema — treat as no restrictions */ }
+
+            if (schema == null)
+                return (new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase),
+                        activeFieldLabels);
+
+            var retiredFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var renameMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var section in schema.Sections)
+            {
+                foreach (var field in section.Fields)
+                {
+                    if (field.IsRetired)
+                    {
+                        retiredFields.Add(field.FieldLabel);
+                        if (field.RenameHistory != null)
+                            foreach (var oldName in field.RenameHistory)
+                                retiredFields.Add(oldName);
+                    }
+
+                    if (field.RenameHistory != null && field.RenameHistory.Count > 0)
+                    {
+                        foreach (var oldName in field.RenameHistory)
                         {
-                            var match = section.Fields.FirstOrDefault(f =>
-                                string.Equals(f.FieldName, fieldName, StringComparison.OrdinalIgnoreCase));
-                            if (match != null)
-                            {
-                                retiredFields.Add(match.FieldLabel);
-                                if (match.RenameHistory != null)
-                                    foreach (var oldName in match.RenameHistory)
-                                        retiredFields.Add(oldName);
-                            }
+                            if (!retiredFields.Contains(oldName))
+                                renameMap[oldName] = field.FieldLabel;
                         }
                     }
                 }
             }
-            catch { /* malformed JSON — skip */ }
-        }
 
-        // Always add all fields in the current schema to active whitelist
-        foreach (var sec in schema.Sections)
-            foreach (var f in sec.Fields)
-                activeFieldLabels.Add(f.FieldLabel);
+            var recentRecords = await _context.PatientHealthRecords
+                .Where(r => r.PatientId == patientId && !r.IsDeleted && !string.IsNullOrEmpty(r.ExcludedFields))
+                .OrderByDescending(r => r.RecordDate)
+                .Take(10)
+                .Select(r => r.ExcludedFields)
+                .ToListAsync();
 
-        return (retiredFields, renameMap, activeFieldLabels);
+            foreach (var excludedJson in recentRecords)
+            {
+                try
+                {
+                    var excludedNames = System.Text.Json.JsonSerializer.Deserialize<List<string>>(excludedJson!);
+                    if (excludedNames != null)
+                    {
+                        foreach (var fieldName in excludedNames)
+                        {
+                            retiredFields.Add(fieldName);
+                            foreach (var section in schema.Sections)
+                            {
+                                var match = section.Fields.FirstOrDefault(f =>
+                                    string.Equals(f.FieldName, fieldName, StringComparison.OrdinalIgnoreCase));
+                                if (match != null)
+                                {
+                                    retiredFields.Add(match.FieldLabel);
+                                    if (match.RenameHistory != null)
+                                        foreach (var oldName in match.RenameHistory)
+                                            retiredFields.Add(oldName);
+                                }
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            foreach (var sec in schema.Sections)
+                foreach (var f in sec.Fields)
+                    activeFieldLabels.Add(f.FieldLabel);
+
+            return (RetiredFields: retiredFields, RenameMap: renameMap, ActiveFieldLabels: activeFieldLabels);
+        }, TimeSpan.FromMinutes(2));
+
+        return result;
     }
 
     private Dictionary<string, List<(DateTime Date, double Value, decimal? Min, decimal? Max, bool? IsAbnormal, string? Unit, string? Section)>>
@@ -758,8 +775,15 @@ public class HealthAnalysisService : IHealthAnalysisService
         var records       = await LoadRecordsAsync(patientId);
         var allLabUnits   = await LoadLabUnitsAsync();
         var allMasterMeds = await LoadMasterMedsAsync();
-        var correlations = new List<MedicationCorrelationDto>();
         
+        // Pre-load common context once per request
+        var (retiredFieldsMed, renameMapMed, activeFieldLabelsMed) = await GetTemplateFieldContextAsync(patientId);
+
+        // Build lookup dictionaries from pre-loaded data (no further DB hits needed)
+        var masterMedsByName = allMasterMeds
+            .ToDictionary(m => m.Name, m => m, StringComparer.OrdinalIgnoreCase);
+
+        var correlations = new List<MedicationCorrelationDto>();
         var medMap = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var r in records)
@@ -782,9 +806,6 @@ public class HealthAnalysisService : IHealthAnalysisService
             { "BMI", r => (double?)r.BMI }
         };
 
-        // Build lookup dictionaries from pre-loaded data (no further DB hits needed)
-        var masterMedsByName = allMasterMeds
-            .ToDictionary(m => m.Name, m => m, StringComparer.OrdinalIgnoreCase);
 
         foreach (var kvp in medMap)
         {
@@ -874,8 +895,6 @@ public class HealthAnalysisService : IHealthAnalysisService
             }
 
             // --- Custom Attribute Correlations ---
-            var (retiredFieldsMed, renameMapMed, activeFieldLabelsMed) =
-                await GetTemplateFieldContextAsync(patientId);
             var allCustomAttributes = ExtractCustomAttributes(records, retiredFieldsMed, renameMapMed, activeFieldLabelsMed);
 
             foreach (var (attrName, allPoints) in allCustomAttributes)
@@ -1305,5 +1324,23 @@ public class HealthAnalysisService : IHealthAnalysisService
         dto.ItemsNeedingAttention = DetectAttentionItems(dto, records, patterns);
 
         return dto;
+    }
+    public async Task<FullAnalysisDto> GetFullAnalysisAsync(Guid patientId)
+    {
+        // These will all benefit from the internal caching implemented in LoadRecordsAsync, etc.
+        var summary = await GetAnalysisSummaryAsync(patientId);
+        var trends = await GetVitalTrendsAsync(patientId);
+        var correlations = await GetMedicationCorrelationsAsync(patientId);
+        var patterns = await GetAbnormalityPatternsAsync(patientId);
+        var timeline = await GetStabilityTimelineAsync(patientId);
+
+        return new FullAnalysisDto
+        {
+            Summary = summary,
+            Trends = trends,
+            Correlations = correlations,
+            Patterns = patterns,
+            Timeline = timeline
+        };
     }
 }

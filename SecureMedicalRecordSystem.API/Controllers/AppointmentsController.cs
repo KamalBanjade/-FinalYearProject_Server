@@ -146,6 +146,17 @@ public class AppointmentsController : ControllerBase
         return Ok(ApiResponse<object>.SuccessResult(null, result.Message));
     }
 
+    [HttpPut("{id}/noshow")]
+    [Authorize(Policy = "DoctorPolicy")]
+    public async Task<ActionResult<ApiResponse<object>>> MarkAsNoShow(Guid id)
+    {
+        var result = await _appointmentService.MarkAsNoShowAsync(id, GetUserId());
+        if (!result.Success)
+            return BadRequest(ApiResponse<object>.FailureResult(result.Message));
+
+        return Ok(ApiResponse<object>.SuccessResult(null, result.Message));
+    }
+
     [HttpPost("{id}/link-record")]
     [Authorize(Policy = "DoctorPolicy")]
     public async Task<ActionResult<ApiResponse<object>>> LinkRecord(Guid id, LinkRecordDTO request)

@@ -9,4 +9,5 @@ public interface IHealthAnalysisService
     Task<List<AbnormalityPatternDto>> GetAbnormalityPatternsAsync(Guid patientId);
     Task<StabilityTimelineDto> GetStabilityTimelineAsync(Guid patientId);
     Task<AnalysisSummaryDto> GetAnalysisSummaryAsync(Guid patientId);
+    Task<FullAnalysisDto> GetFullAnalysisAsync(Guid patientId);
 }

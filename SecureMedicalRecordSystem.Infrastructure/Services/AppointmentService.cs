@@ -70,9 +70,9 @@ public class AppointmentService : IAppointmentService
                 : request.AppointmentDate.ToUniversalTime();
 
             // Validate date
-            if (appointmentDate <= DateTime.Now)
+            if (appointmentDate <= DateTime.UtcNow)
             {
-                _logger.LogWarning("Appointment date {Date} is not in the future (Now UTC: {Now})", appointmentDate, DateTime.Now);
+                _logger.LogWarning("Appointment date {Date} is not in the future (Now UTC: {Now})", appointmentDate, DateTime.UtcNow);
                 return (false, "Appointment date must be in the future.", null);
             }
 
@@ -89,83 +89,87 @@ public class AppointmentService : IAppointmentService
                 return (false, "This time slot is no longer available. Please select another time.", null);
             }
 
-            using var transaction = await _context.Database.BeginTransactionAsync();
-            try
+            var strategy = _context.Database.CreateExecutionStrategy();
+            return await strategy.ExecuteAsync(async () =>
             {
-                var appointment = new Appointment
+                using var transaction = await _context.Database.BeginTransactionAsync();
+                try
                 {
-                    Id = Guid.NewGuid(),
-                    PatientId = patient.Id,
-                    DoctorId = request.DoctorId,
-                    AppointmentDate = appointmentDate,
-                    Duration = duration,
-                    ReasonForVisit = request.ReasonForVisit,
-                    Status = AppointmentStatus.Confirmed,
-                    CreatedAt = DateTime.Now,
-                    ScheduledAt = appointmentDate,
-                    ConfirmedAt = DateTime.Now,
-                    CreatedBy = requestingUserId,
-                    IsActive = true
-                };
+                    var appointment = new Appointment
+                    {
+                        Id = Guid.NewGuid(),
+                        PatientId = patient.Id,
+                        DoctorId = request.DoctorId,
+                        AppointmentDate = appointmentDate,
+                        Duration = duration,
+                        ReasonForVisit = request.ReasonForVisit,
+                        Status = AppointmentStatus.Confirmed,
+                        CreatedAt = DateTime.Now,
+                        ScheduledAt = appointmentDate,
+                        ConfirmedAt = DateTime.Now,
+                        CreatedBy = requestingUserId,
+                        IsActive = true
+                    };
 
-                await _context.Appointments.AddAsync(appointment);
+                    await _context.Appointments.AddAsync(appointment);
 
-                // Set as primary doctor if not already set
-                if (patient.PrimaryDoctorId == null)
-                {
-                    patient.PrimaryDoctorId = request.DoctorId;
-                    _logger.LogInformation("Setting Dr {DoctorId} as primary for patient {PatientId} during appointment creation", request.DoctorId, patient.Id);
+                    // Set as primary doctor if not already set
+                    if (patient.PrimaryDoctorId == null)
+                    {
+                        patient.PrimaryDoctorId = request.DoctorId;
+                        _logger.LogInformation("Setting Dr {DoctorId} as primary for patient {PatientId} during appointment creation", request.DoctorId, patient.Id);
+                    }
+
+                    await _context.SaveChangesAsync();
+                    
+                    // Double check for any overlaps created at the exact same millisecond
+                    if (await CheckAppointmentConflictAsync(request.DoctorId, appointmentDate, duration, appointment.Id))
+                    {
+                        await transaction.RollbackAsync();
+                        _logger.LogWarning("Race condition: slot {Date} for Dr {DoctorId} was just taken", appointmentDate, request.DoctorId);
+                        return (false, "This time slot was just booked by someone else. Please try another.", null);
+                    }
+
+                    await transaction.CommitAsync();
+
+                    await _auditLogService.LogAsync(
+                        requestingUserId,
+                        "Appointment scheduled (Instant)",
+                        $"Confirmed appointment with Dr. {doctor.User.LastName} on {appointmentDate:g}",
+                        "0.0.0.0", "Service", "Appointment", appointment.Id.ToString());
+
+                    // Set navigation properties for MapToDTO
+                    appointment.Patient = patient;
+                    appointment.Doctor = doctor;
+
+                    // Fire-and-forget: return instantly after DB commit, emails go out in background
+                    var patientEmail = patient.User.Email!;
+                    var doctorEmail = doctor.User.Email!;
+                    _ = Task.Run(async () =>
+                    {
+                        using var scope = _scopeFactory.CreateScope();
+                        var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
+                        try 
+                        {
+                            await emailSvc.SendAppointmentConfirmationEmailAsync(patientEmail, appointment);
+                            await emailSvc.SendDoctorNewAppointmentNotificationAsync(doctorEmail, appointment);
+                        }
+                        catch (Exception emailEx)
+                        {
+                            Log.Error(emailEx, "Background email failed for appointment {Id}", appointment.Id);
+                        }
+                    });
+
+                    _logger.LogInformation("Appointment {Id} created successfully", appointment.Id);
+                    return (true, "Appointment confirmed successfully", MapToDTO(appointment));
                 }
-
-                await _context.SaveChangesAsync();
-                
-                // Double check for any overlaps created at the exact same millisecond
-                if (await CheckAppointmentConflictAsync(request.DoctorId, appointmentDate, duration, appointment.Id))
+                catch (Exception ex)
                 {
                     await transaction.RollbackAsync();
-                    _logger.LogWarning("Race condition: slot {Date} for Dr {DoctorId} was just taken", appointmentDate, request.DoctorId);
-                    return (false, "This time slot was just booked by someone else. Please try another.", null);
+                    _logger.LogError(ex, "Transaction failed while creating appointment");
+                    throw;
                 }
-
-                await transaction.CommitAsync();
-
-                await _auditLogService.LogAsync(
-                    requestingUserId,
-                    "Appointment scheduled (Instant)",
-                    $"Confirmed appointment with Dr. {doctor.User.LastName} on {appointmentDate:g}",
-                    "0.0.0.0", "Service", "Appointment", appointment.Id.ToString());
-
-                // Set navigation properties for MapToDTO
-                appointment.Patient = patient;
-                appointment.Doctor = doctor;
-
-                // Fire-and-forget: return instantly after DB commit, emails go out in background
-                var patientEmail = patient.User.Email!;
-                var doctorEmail = doctor.User.Email!;
-                _ = Task.Run(async () =>
-                {
-                    using var scope = _scopeFactory.CreateScope();
-                    var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
-                    try 
-                    {
-                        await emailSvc.SendAppointmentConfirmationEmailAsync(patientEmail, appointment);
-                        await emailSvc.SendDoctorNewAppointmentNotificationAsync(doctorEmail, appointment);
-                    }
-                    catch (Exception emailEx)
-                    {
-                        Log.Error(emailEx, "Background email failed for appointment {Id}", appointment.Id);
-                    }
-                });
-
-                _logger.LogInformation("Appointment {Id} created successfully", appointment.Id);
-                return (true, "Appointment confirmed successfully", MapToDTO(appointment));
-            }
-            catch (Exception ex)
-            {
-                await transaction.RollbackAsync();
-                _logger.LogError(ex, "Transaction failed while creating appointment");
-                throw;
-            }
+            });
         }
         catch (Exception ex)
         {
@@ -196,7 +200,7 @@ public class AppointmentService : IAppointmentService
 
         if (!includeHistory)
         {
-            var cutoffDate = DateTime.Now.AddDays(-7);
+            var cutoffDate = DateTime.UtcNow.AddDays(-7);
             query = query.Where(a => a.AppointmentDate >= cutoffDate || 
                                    a.Status == AppointmentStatus.Scheduled ||
                                    a.Status == AppointmentStatus.Confirmed);
@@ -284,7 +288,7 @@ public class AppointmentService : IAppointmentService
         var doctor = await _context.Doctors.FindAsync(doctorId);
         if (doctor == null) return (false, "Doctor not found.", null);
 
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         var today = now.Date;
         var endOfToday = today.AddDays(1);
 
@@ -322,7 +326,7 @@ public class AppointmentService : IAppointmentService
 
         // Business Rule: Patient can only cancel up to 24 hours before
         var isPatient = appointment.Patient.UserId == requestingUserId;
-        if (isPatient && (appointment.AppointmentDate - DateTime.Now).TotalHours < 24)
+        if (isPatient && (appointment.AppointmentDate - DateTime.UtcNow).TotalHours < 24)
         {
             return (false, "Appointments cannot be cancelled by patients within 24 hours of the scheduled time.");
         }
@@ -373,14 +377,18 @@ public class AppointmentService : IAppointmentService
         if (appointment.Status == AppointmentStatus.Completed)
             return (false, "Completed appointments cannot be rescheduled.", null);
 
-        if (newDateTime <= DateTime.Now)
+        var newAppointmentDate = newDateTime.Kind == DateTimeKind.Unspecified 
+            ? DateTime.SpecifyKind(newDateTime, DateTimeKind.Utc) 
+            : newDateTime.ToUniversalTime();
+
+        if (newAppointmentDate <= DateTime.UtcNow)
             return (false, "New date must be in the future.", null);
 
-        if (await CheckAppointmentConflictAsync(appointment.DoctorId, newDateTime, appointment.Duration))
+        if (await CheckAppointmentConflictAsync(appointment.DoctorId, newAppointmentDate, appointment.Duration))
             return (false, "New time slot not available.", null);
 
         var oldDate = appointment.AppointmentDate;
-        appointment.AppointmentDate = newDateTime;
+        appointment.AppointmentDate = newAppointmentDate;
         appointment.Status = AppointmentStatus.Scheduled; // Re-requires confirmation
         appointment.ConfirmedAt = null;
 
@@ -408,7 +416,7 @@ public class AppointmentService : IAppointmentService
 
     public async Task<(bool Success, string Message)> CompleteAppointmentAsync(
         Guid appointmentId, 
-        string consultationNotes, 
+        string? consultationNotes, 
         Guid requestingUserId)
     {
         var appointment = await _context.Appointments.FindAsync(appointmentId);
@@ -417,20 +425,19 @@ public class AppointmentService : IAppointmentService
         if (appointment.Status != AppointmentStatus.InProgress && appointment.Status != AppointmentStatus.Confirmed)
             return (false, "Appointment must be Confirmed or In Progress to be completed.");
 
-        if (string.IsNullOrWhiteSpace(consultationNotes))
-            return (false, "Consultation notes are required to complete the appointment.");
-
         appointment.Status = AppointmentStatus.Completed;
         appointment.IsCompleted = true;
-        appointment.CompletedAt = DateTime.Now;
-        appointment.ConsultationNotes = consultationNotes;
+        appointment.CompletedAt = DateTime.UtcNow;
+        appointment.ConsultationNotes = string.IsNullOrWhiteSpace(consultationNotes) ? null : consultationNotes.Trim();
 
         await _context.SaveChangesAsync();
 
         await _auditLogService.LogAsync(
             requestingUserId,
             "Appointment completed",
-            $"Consultation notes added. Records linked: {appointment.LinkedRecords?.Count ?? 0}",
+            string.IsNullOrWhiteSpace(consultationNotes)
+                ? $"Appointment marked completed without consultation notes. Records linked: {appointment.LinkedRecords?.Count ?? 0}"
+                : $"Consultation notes added. Records linked: {appointment.LinkedRecords?.Count ?? 0}",
             "0.0.0.0", "Service", "Appointment", appointment.Id.ToString());
 
         return (true, "Appointment marked as completed successfully.");
@@ -679,47 +686,97 @@ public class AppointmentService : IAppointmentService
 
     public async Task<int> CheckAndTransitionAppointmentStatusesAsync()
     {
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         var fifteenMinutesAgo = now.AddMinutes(-15);
         
-        // 1. Transition Scheduled/Confirmed to NoShow if 15 mins past start time
-        var noShows = await _context.Appointments
-            .Where(a => (a.Status == AppointmentStatus.Scheduled || a.Status == AppointmentStatus.Confirmed)
-                     && a.AppointmentDate < fifteenMinutesAgo
-                     && a.IsActive && !a.IsCancelled)
-            .ToListAsync();
+        int inProgressCount = 0;
+        int noShowCount = 0;
 
-        foreach (var appt in noShows)
-        {
-            appt.Status = AppointmentStatus.NoShow;
-            _logger.LogInformation("Appointment {Id} marked as NoShow (15 mins past start).", appt.Id);
-        }
-
-        // 2. Transition Confirmed to InProgress if start time has arrived
+        // 1. Transition Confirmed to InProgress if start time has arrived
         var startedAppointments = await _context.Appointments
             .Where(a => a.Status == AppointmentStatus.Confirmed
                      && a.AppointmentDate <= now
                      && a.IsActive && !a.IsCancelled)
             .ToListAsync();
 
-        foreach (var appt in startedAppointments)
+        if (startedAppointments.Any())
         {
-            appt.Status = AppointmentStatus.InProgress;
-            _logger.LogInformation("Appointment {Id} transitioned to InProgress.", appt.Id);
-        }
-
-        if (noShows.Any() || startedAppointments.Any())
-        {
+            foreach (var appt in startedAppointments)
+            {
+                appt.Status = AppointmentStatus.InProgress;
+                _logger.LogInformation("Appointment {Id} transitioned to InProgress.", appt.Id);
+            }
             await _context.SaveChangesAsync();
-            await _auditLogService.LogAsync(null, "Bulk appointment status transition", $"Processed {noShows.Count} NoShows and {startedAppointments.Count} InProgress.", "0.0.0.0", "System");
+            inProgressCount = startedAppointments.Count;
         }
 
-        return noShows.Count + startedAppointments.Count;
+        // 2. Transition Scheduled/Confirmed to NoShow if 15 mins past start time
+        var noShows = await _context.Appointments
+            .Where(a => (a.Status == AppointmentStatus.Scheduled || a.Status == AppointmentStatus.Confirmed)
+                     && a.AppointmentDate < fifteenMinutesAgo
+                     && a.IsActive && !a.IsCancelled)
+            .ToListAsync();
+
+        if (noShows.Any())
+        {
+            foreach (var appt in noShows)
+            {
+                appt.Status = AppointmentStatus.NoShow;
+                _logger.LogInformation("Appointment {Id} marked as NoShow (15 mins past start).", appt.Id);
+            }
+            await _context.SaveChangesAsync();
+            noShowCount = noShows.Count;
+        }
+
+        if (inProgressCount > 0 || noShowCount > 0)
+        {
+            await _auditLogService.LogAsync(null, "Bulk appointment status transition", $"Processed {noShowCount} NoShows and {inProgressCount} InProgress.", "0.0.0.0", "System");
+        }
+
+        return noShowCount + inProgressCount;
+    }
+
+    public async Task<(bool Success, string Message)> MarkAsNoShowAsync(Guid appointmentId, Guid requestingUserId)
+    {
+        try
+        {
+            var appointment = await _context.Appointments.FindAsync(appointmentId);
+            if (appointment == null) 
+            {
+                _logger.LogWarning("Appointment {Id} not found for manual No Show request.", appointmentId);
+                return (false, "Appointment not found.");
+            }
+
+            if (appointment.Status != AppointmentStatus.Confirmed && appointment.Status != AppointmentStatus.InProgress)
+            {
+                _logger.LogWarning("Appointment {Id} status is {Status}; cannot manually mark as No Show.", appointmentId, appointment.Status);
+                return (false, "Appointment must be Confirmed or In Progress to be marked as No Show.");
+            }
+
+            var oldStatus = appointment.Status;
+            appointment.Status = AppointmentStatus.NoShow;
+
+            await _context.SaveChangesAsync();
+
+            await _auditLogService.LogAsync(
+                requestingUserId,
+                "Appointment marked as No Show",
+                $"Appointment {appointmentId} manually marked as No Show by Doctor. (Previous status: {oldStatus})",
+                "0.0.0.0", "Service", "Appointment", appointment.Id.ToString());
+
+            _logger.LogInformation("Appointment {Id} manually marked as No Show by user {UserId}.", appointmentId, requestingUserId);
+            return (true, "Appointment marked as No Show successfully.");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error marking appointment {Id} as No Show manually.", appointmentId);
+            return (false, "An error occurred while marking the appointment as No Show.");
+        }
     }
 
     private AppointmentDTO MapToDTO(Appointment appointment)
     {
-        var now = DateTime.Now;
+        var now = DateTime.UtcNow;
         var displayStatus = appointment.Status.ToString();
 
         // Dynamic status transition: Scheduled/Confirmed/InProgress -> Overdue if time exceeded
@@ -757,8 +814,8 @@ public class AppointmentService : IAppointmentService
                 LinkedAt = ar.LinkedAt,
                 Notes = ar.Notes
             }).ToList() ?? new(),
-            CanCancel = !appointment.IsCancelled && !appointment.IsCompleted && (appointment.AppointmentDate - DateTime.Now).TotalHours > 24,
-            CanReschedule = !appointment.IsCancelled && !appointment.IsCompleted && (appointment.AppointmentDate - DateTime.Now).TotalHours > 24,
+            CanCancel = !appointment.IsCancelled && !appointment.IsCompleted && (appointment.AppointmentDate - DateTime.UtcNow).TotalHours > 24,
+            CanReschedule = !appointment.IsCancelled && !appointment.IsCompleted && (appointment.AppointmentDate - DateTime.UtcNow).TotalHours > 24,
             CreatedAt = appointment.CreatedAt,
             CompletedAt = appointment.CompletedAt
         };
