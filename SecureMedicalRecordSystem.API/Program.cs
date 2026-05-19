@@ -330,51 +330,54 @@ try
             await MasterMedicationSeeder.SeedMasterMedicationsAsync(dbContext);
             Log.Information("Master Medication Dictionary Seeded.");
             
-            // Backfill missing SecurityStamps to fix TOTP validation crash
-            Log.Information("Backfilling missing SecurityStamps...");
-            var allUsers = userManager.Users.ToList();
-            var usersMissingStamps = allUsers.Where(u => u.SecurityStamp == null).ToList();
-                
-            foreach (var u in usersMissingStamps)
+            var runBackfills = app.Configuration.GetValue<bool>("RunBackfills", false);
+            if (runBackfills)
             {
-                await userManager.UpdateSecurityStampAsync(u);
-                Log.Information("Assigned new SecurityStamp to user: {Email}", u.Email);
-            }
-            Log.Information("SecurityStamp backfill complete. ({Count} fixed)", usersMissingStamps.Count);
+                // Backfill missing SecurityStamps to fix TOTP validation crash
+                Log.Information("Backfilling missing SecurityStamps...");
+                var usersMissingStamps = await userManager.Users.Where(u => u.SecurityStamp == null).ToListAsync();
+                    
+                foreach (var u in usersMissingStamps)
+                {
+                    await userManager.UpdateSecurityStampAsync(u);
+                    Log.Information("Assigned new SecurityStamp to user: {Email}", u.Email);
+                }
+                Log.Information("SecurityStamp backfill complete. ({Count} fixed)", usersMissingStamps.Count);
 
-            // Backfill Prescriptions and Vital Baselines
-            try
-            {
-                Log.Information("Backfilling Prescriptions and Vital Baselines...");
-                var prescriptionService = services.GetRequiredService<IPrescriptionService>();
-                var baselineService = services.GetRequiredService<VitalBaselineService>();
-                
-                // Get all health records with TreatmentPlan
-                var recordsWithTreatmentPlan = await dbContext.PatientHealthRecords
-                    .Where(r => !string.IsNullOrEmpty(r.TreatmentPlan) && !r.IsDeleted)
-                    .ToListAsync();
-                    
-                foreach (var record in recordsWithTreatmentPlan)
+                // Backfill Prescriptions and Vital Baselines
+                try
                 {
-                    await prescriptionService.SeedPrescriptionsFromTreatmentPlanAsync(record.Id, record.TreatmentPlan!);
-                }
-                
-                // Get distinct patients who have health records
-                var distinctPatientsWithRecords = await dbContext.PatientHealthRecords
-                    .Where(r => !r.IsDeleted)
-                    .Select(r => r.PatientId)
-                    .Distinct()
-                    .ToListAsync();
+                    Log.Information("Backfilling Prescriptions and Vital Baselines...");
+                    var prescriptionService = services.GetRequiredService<IPrescriptionService>();
+                    var baselineService = services.GetRequiredService<VitalBaselineService>();
                     
-                foreach (var patientId in distinctPatientsWithRecords)
-                {
-                    await baselineService.RecalculateBaselineAsync(patientId);
+                    // Get all health records with TreatmentPlan
+                    var recordsWithTreatmentPlan = await dbContext.PatientHealthRecords
+                        .Where(r => !string.IsNullOrEmpty(r.TreatmentPlan) && !r.IsDeleted)
+                        .ToListAsync();
+                        
+                    foreach (var record in recordsWithTreatmentPlan)
+                    {
+                        await prescriptionService.SeedPrescriptionsFromTreatmentPlanAsync(record.Id, record.TreatmentPlan!);
+                    }
+                    
+                    // Get distinct patients who have health records
+                    var distinctPatientsWithRecords = await dbContext.PatientHealthRecords
+                        .Where(r => !r.IsDeleted)
+                        .Select(r => r.PatientId)
+                        .Distinct()
+                        .ToListAsync();
+                        
+                    foreach (var patientId in distinctPatientsWithRecords)
+                    {
+                        await baselineService.RecalculateBaselineAsync(patientId);
+                    }
+                    Log.Information("Backfilling Prescriptions and Vital Baselines complete.");
                 }
-                Log.Information("Backfilling Prescriptions and Vital Baselines complete.");
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to backfill Prescriptions and Vital Baselines.");
+                catch (Exception ex)
+                {
+                    Log.Error(ex, "Failed to backfill Prescriptions and Vital Baselines.");
+                }
             }
         }
         catch (Exception ex)

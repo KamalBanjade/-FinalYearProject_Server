@@ -39,6 +39,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
     public DbSet<AnalysisReport> AnalysisReports => Set<AnalysisReport>();
     public DbSet<StabilityAlert> StabilityAlerts { get; set; }
     public DbSet<MasterMedication> MasterMedications { get; set; }
+    public DbSet<UserNotification> UserNotifications { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -78,6 +79,7 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
         modelBuilder.Entity<Prescription>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<PatientVitalBaseline>().HasQueryFilter(e => !e.IsDeleted);
         modelBuilder.Entity<StabilityAlert>().HasQueryFilter(e => !e.IsDeleted);
+        modelBuilder.Entity<UserNotification>().HasQueryFilter(e => !e.IsDeleted);
 
         // AuditLog specific configurations
         modelBuilder.Entity<AuditLog>(entity =>
@@ -435,6 +437,22 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser, IdentityR
                   .HasForeignKey(e => e.PatientId)
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasQueryFilter(e => !e.IsDeleted);
+        });
+
+        // UserNotification
+        modelBuilder.Entity<UserNotification>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => new { e.UserId, e.IsRead, e.CreatedAt })
+                  .HasDatabaseName("IX_UserNotifications_UserId_IsRead_CreatedAt");
+            entity.Property(e => e.Title).IsRequired().HasMaxLength(200);
+            entity.Property(e => e.Message).IsRequired().HasMaxLength(1000);
+            entity.Property(e => e.Type).IsRequired().HasMaxLength(50);
+            entity.Property(e => e.ReferenceId).HasMaxLength(100);
+            entity.HasOne(e => e.User)
+                  .WithMany()
+                  .HasForeignKey(e => e.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Template

@@ -172,7 +172,7 @@ public class HealthAnalysisService : IHealthAnalysisService
 
         var cacheKey = $"patient:records:analysis:{patientId}";
         
-        // We use a slightly longer expiration for the record list since it's the heaviest load
+        // We use a longer 5-minute expiration for the record list since it's the heaviest load
         _cachedRecords = await _cache.GetOrSetAsync(cacheKey, async () => 
         {
             return await _context.PatientHealthRecords
@@ -183,7 +183,7 @@ public class HealthAnalysisService : IHealthAnalysisService
                 .Where(r => r.PatientId == patientId && !r.IsDeleted)
                 .OrderBy(r => r.RecordDate)
                 .ToListAsync();
-        }, TimeSpan.FromSeconds(30));
+        }, TimeSpan.FromMinutes(5));
 
         _cachedPatientId = patientId;
         return _cachedRecords ?? new List<PatientHealthRecord>();
@@ -779,6 +779,9 @@ public class HealthAnalysisService : IHealthAnalysisService
         // Pre-load common context once per request
         var (retiredFieldsMed, renameMapMed, activeFieldLabelsMed) = await GetTemplateFieldContextAsync(patientId);
 
+        // EXTRACT ONCE OUTSIDE THE LOOP! (Fixes massive N^2 latency issue)
+        var allCustomAttributes = ExtractCustomAttributes(records, retiredFieldsMed, renameMapMed, activeFieldLabelsMed);
+
         // Build lookup dictionaries from pre-loaded data (no further DB hits needed)
         var masterMedsByName = allMasterMeds
             .ToDictionary(m => m.Name, m => m, StringComparer.OrdinalIgnoreCase);
@@ -895,8 +898,6 @@ public class HealthAnalysisService : IHealthAnalysisService
             }
 
             // --- Custom Attribute Correlations ---
-            var allCustomAttributes = ExtractCustomAttributes(records, retiredFieldsMed, renameMapMed, activeFieldLabelsMed);
-
             foreach (var (attrName, allPoints) in allCustomAttributes)
             {
                 var beforePoints = allPoints
@@ -1220,19 +1221,28 @@ public class HealthAnalysisService : IHealthAnalysisService
 
     public async Task<AnalysisSummaryDto> GetAnalysisSummaryAsync(Guid patientId)
     {
+        var trends = await GetVitalTrendsAsync(patientId);
+        var timeline = await GetStabilityTimelineAsync(patientId);
+        var patterns = await GetAbnormalityPatternsAsync(patientId);
+        var correlations = await GetMedicationCorrelationsAsync(patientId);
+
+        return await BuildAnalysisSummaryAsync(patientId, trends, timeline, patterns, correlations);
+    }
+
+    private async Task<AnalysisSummaryDto> BuildAnalysisSummaryAsync(
+        Guid patientId,
+        List<VitalTrendDto> trends,
+        StabilityTimelineDto timeline,
+        List<AbnormalityPatternDto> patterns,
+        List<MedicationCorrelationDto> correlations)
+    {
         var patient = await _context.Patients.FirstOrDefaultAsync(p => p.Id == patientId);
         if (patient == null) return new AnalysisSummaryDto();
 
         var records = await LoadRecordsAsync(patientId);
         if (records.Count == 0) return new AnalysisSummaryDto { PatientId = patientId };
 
-        // Load dependencies sequentially (EF Core context is not thread-safe for parallel reads)
-        var trends = await GetVitalTrendsAsync(patientId);
-        var timeline = await GetStabilityTimelineAsync(patientId);
-        var patterns = await GetAbnormalityPatternsAsync(patientId);
-        var correlations = await GetMedicationCorrelationsAsync(patientId);
         var baseline = await LoadBaselineAsync(patientId);
-
         var latestRecord = records.Last();
 
         var dto = new AnalysisSummaryDto
@@ -1268,9 +1278,17 @@ public class HealthAnalysisService : IHealthAnalysisService
             dto.ActiveMedications = latestRecord.Prescriptions.Select(p => p.MedicationName).Distinct().ToList();
         }
 
-        foreach (var t in trends.Where(x => Math.Abs(x.Slope) > 0.5))
+        foreach (var t in trends)
         {
-            dto.KeyInsights.Add($"Marker {t.VitalName} shows significant trend slope ({t.Slope:F2}).");
+            if (Math.Abs(t.Slope) > 0.5)
+            {
+                dto.KeyInsights.Add($"Marker {t.VitalName} shows significant trend slope ({t.Slope:F2}).");
+            }
+            if (t.SectionName != "Vital Signs" && t.IsAbnormal)
+            {
+                var unit = string.IsNullOrEmpty(t.VitalUnit) ? "" : $" {t.VitalUnit}";
+                dto.KeyInsights.Add($"{t.VitalName} latest reading ({t.CurrentValue:F2}{unit}) is outside the normal range.");
+            }
         }
 
         foreach (var p in patterns)
@@ -1278,35 +1296,6 @@ public class HealthAnalysisService : IHealthAnalysisService
             foreach (var s in p.Streaks.Where(x => x.ConsecutiveCount >= 3))
             {
                 dto.KeyInsights.Add($"Significant streak of {s.ConsecutiveCount} abnormal {p.VitalName} readings observed from {s.From:MMM yyyy} to {s.To:MMM yyyy}.");
-            }
-        }
-
-        // --- Custom Attribute Insights ---
-        var (retiredFieldsSum, renameMapSum, activeFieldLabelsSum) =
-            await GetTemplateFieldContextAsync(patientId);
-        var customAttributes = ExtractCustomAttributes(records, retiredFieldsSum, renameMapSum, activeFieldLabelsSum);
-
-        foreach (var (attrName, dataPoints) in customAttributes)
-        {
-            if (dataPoints.Count < 2) continue;
-
-            var values = dataPoints.Select(d => d.Value).ToList();
-            var slope = LinearRegressionSlope(values);
-
-            if (Math.Abs(slope) > 0.5)
-            {
-                dto.KeyInsights.Add($"Marker {attrName} shows significant trend slope ({slope:F2}).");
-            }
-
-            // Check if latest value is abnormal
-            var latestAttr = dataPoints.Last();
-            var isLatestAbnormal = IsCustomAttributeAbnormal(
-                latestAttr.Value, latestAttr.Min, latestAttr.Max, latestAttr.IsAbnormal);
-
-            if (isLatestAbnormal)
-            {
-                var unit = latestAttr.Unit ?? string.Empty;
-                dto.KeyInsights.Add($"{attrName} latest reading ({latestAttr.Value:F2} {unit}) is outside the normal range.");
             }
         }
 
@@ -1325,14 +1314,15 @@ public class HealthAnalysisService : IHealthAnalysisService
 
         return dto;
     }
+
     public async Task<FullAnalysisDto> GetFullAnalysisAsync(Guid patientId)
     {
-        // These will all benefit from the internal caching implemented in LoadRecordsAsync, etc.
-        var summary = await GetAnalysisSummaryAsync(patientId);
         var trends = await GetVitalTrendsAsync(patientId);
-        var correlations = await GetMedicationCorrelationsAsync(patientId);
-        var patterns = await GetAbnormalityPatternsAsync(patientId);
         var timeline = await GetStabilityTimelineAsync(patientId);
+        var patterns = await GetAbnormalityPatternsAsync(patientId);
+        var correlations = await GetMedicationCorrelationsAsync(patientId);
+
+        var summary = await BuildAnalysisSummaryAsync(patientId, trends, timeline, patterns, correlations);
 
         return new FullAnalysisDto
         {

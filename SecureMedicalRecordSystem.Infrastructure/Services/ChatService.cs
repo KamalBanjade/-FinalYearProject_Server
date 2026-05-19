@@ -137,12 +137,20 @@ public class ChatService : IChatService
                 name = "Dr. " + name;
             }
 
+            string? gender = null;
+            if (otherUser.Role == "Patient")
+            {
+                var patient = await _context.Patients.FirstOrDefaultAsync(p => p.UserId == otherUser.Id);
+                gender = patient?.Gender;
+            }
+
             dtos.Add(new ConversationDTO
             {
                 OtherUserId = item.OtherUserId,
                 OtherUserName = name,
                 OtherUserRole = otherUser.Role,
                 OtherUserProfilePictureUrl = otherUser.ProfilePictureUrl,
+                OtherUserGender = gender,
                 LastMessageText = SafeDecrypt(item.LastMessageText ?? string.Empty), // decrypt preview
                 LastMessageAt = item.LastMessageAt,
                 UnreadCount = item.UnreadCount,

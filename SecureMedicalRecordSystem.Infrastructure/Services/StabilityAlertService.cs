@@ -150,6 +150,28 @@ public class StabilityAlertService : IStabilityAlertService
             .ToListAsync();
     }
 
+    public async Task<List<StabilityAlertDto>> GetRecentAlertsForDoctorAsync(Guid doctorId, int count = 20)
+    {
+        return await _context.StabilityAlerts
+            .Include(a => a.Patient)
+            .ThenInclude(p => p.User)
+            .Where(a => a.DoctorId == doctorId && !a.IsDeleted)
+            .OrderByDescending(a => a.TriggeredAt)
+            .Take(count)
+            .Select(a => new StabilityAlertDto
+            {
+                AlertId = a.Id,
+                PatientId = a.PatientId,
+                PatientName = a.Patient.User.FirstName + " " + a.Patient.User.LastName,
+                Quarter = a.Quarter,
+                StabilityScore = a.StabilityScore,
+                ScoreInterpretation = a.ScoreInterpretation,
+                TriggeredAt = a.TriggeredAt,
+                IsRead = a.IsRead
+            })
+            .ToListAsync();
+    }
+
     public async Task MarkAlertAsReadAsync(Guid alertId, Guid doctorId)
     {
         var alert = await _context.StabilityAlerts

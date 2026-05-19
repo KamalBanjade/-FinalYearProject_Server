@@ -24,7 +24,7 @@ public class AlertsController : ControllerBase
         if (string.IsNullOrEmpty(doctorIdString)) return Unauthorized();
         
         var doctorId = Guid.Parse(doctorIdString);
-        var alerts = await _alertService.GetUnreadAlertsForDoctorAsync(doctorId);
+        var alerts = await _alertService.GetRecentAlertsForDoctorAsync(doctorId, 20);
         return Ok(alerts);
     }
 

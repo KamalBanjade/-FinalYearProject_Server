@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using SecureMedicalRecordSystem.Core.DTOs.Appointments;
 using SecureMedicalRecordSystem.Core.DTOs.MedicalRecords;
+using SecureMedicalRecordSystem.Core.DTOs.Notifications;
 using SecureMedicalRecordSystem.Core.Entities;
 using SecureMedicalRecordSystem.Core.Enums;
 using SecureMedicalRecordSystem.Core.Interfaces;
@@ -19,6 +20,7 @@ public class AppointmentService : IAppointmentService
     private readonly IDoctorAvailabilityService _availabilityService;
     private readonly ILogger<AppointmentService> _logger;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly INotificationService _notificationService;
 
     public AppointmentService(
         ApplicationDbContext context,
@@ -26,7 +28,8 @@ public class AppointmentService : IAppointmentService
         IAuditLogService auditLogService,
         IDoctorAvailabilityService availabilityService,
         ILogger<AppointmentService> logger,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        INotificationService notificationService)
     {
         _context = context;
         _emailService = emailService;
@@ -34,6 +37,7 @@ public class AppointmentService : IAppointmentService
         _availabilityService = availabilityService;
         _logger = logger;
         _scopeFactory = scopeFactory;
+        _notificationService = notificationService;
     }
 
     public async Task<(bool Success, string Message, AppointmentDTO? Data)> CreateAppointmentAsync(
@@ -157,6 +161,38 @@ public class AppointmentService : IAppointmentService
                         catch (Exception emailEx)
                         {
                             Log.Error(emailEx, "Background email failed for appointment {Id}", appointment.Id);
+                        }
+                    });
+
+                    // Persist + push real-time SignalR notifications
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            using var scope = _scopeFactory.CreateScope();
+                            var notifSvc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+
+                            var patNotification = new SystemNotificationDto
+                            {
+                                Title = "Appointment Scheduled",
+                                Message = $"Your appointment with Dr. {doctor.User.FirstName} {doctor.User.LastName} has been scheduled for {appointmentDate:f}.",
+                                Type = "AppointmentCreated",
+                                ReferenceId = appointment.Id.ToString()
+                            };
+                            await notifSvc.PersistAndSendNotificationAsync(patient.UserId, patNotification);
+
+                            var docNotification = new SystemNotificationDto
+                            {
+                                Title = "New Appointment Scheduled",
+                                Message = $"Patient {patient.User.FirstName} {patient.User.LastName} has scheduled an appointment for {appointmentDate:f}.",
+                                Type = "AppointmentCreated",
+                                ReferenceId = appointment.Id.ToString()
+                            };
+                            await notifSvc.PersistAndSendNotificationAsync(doctor.UserId, docNotification);
+                        }
+                        catch (Exception sigEx)
+                        {
+                            _logger.LogError(sigEx, "Failed to persist/send SignalR notifications for appointment {Id}", appointment.Id);
                         }
                     });
 
@@ -359,6 +395,38 @@ public class AppointmentService : IAppointmentService
             catch (Exception ex) { Log.Error(ex, "Background cancel email failed for appointment {Id}", appointment.Id); }
         });
 
+        // Persist + push real-time SignalR notifications
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var notifSvc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+
+                var patNotification = new SystemNotificationDto
+                {
+                    Title = "Appointment Cancelled",
+                    Message = $"Your appointment with Dr. {appointment.Doctor.User.FirstName} {appointment.Doctor.User.LastName} on {appointment.AppointmentDate:g} has been cancelled. Reason: {cancellationReason}",
+                    Type = "AppointmentCancelled",
+                    ReferenceId = appointment.Id.ToString()
+                };
+                await notifSvc.PersistAndSendNotificationAsync(appointment.Patient.UserId, patNotification);
+
+                var docNotification = new SystemNotificationDto
+                {
+                    Title = "Appointment Cancelled",
+                    Message = $"Your appointment with Patient {appointment.Patient.User.FirstName} {appointment.Patient.User.LastName} on {appointment.AppointmentDate:g} has been cancelled. Reason: {cancellationReason}",
+                    Type = "AppointmentCancelled",
+                    ReferenceId = appointment.Id.ToString()
+                };
+                await notifSvc.PersistAndSendNotificationAsync(appointment.Doctor.UserId, docNotification);
+            }
+            catch (Exception sigEx)
+            {
+                _logger.LogError(sigEx, "Failed to persist/send cancellation notifications for appointment {Id}", appointment.Id);
+            }
+        });
+
         return (true, "Appointment cancelled successfully.");
     }
 
@@ -408,6 +476,38 @@ public class AppointmentService : IAppointmentService
             var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
             try { await emailSvc.SendAppointmentRescheduledEmailAsync(reschedEmail, appointment); }
             catch (Exception ex) { Log.Error(ex, "Background reschedule email failed for appointment {Id}", appointment.Id); }
+        });
+
+        // Persist + push real-time SignalR notifications
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var notifSvc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+
+                var patNotification = new SystemNotificationDto
+                {
+                    Title = "Appointment Rescheduled",
+                    Message = $"Your appointment with Dr. {appointment.Doctor.User.FirstName} {appointment.Doctor.User.LastName} has been rescheduled to {newAppointmentDate:g}.",
+                    Type = "AppointmentRescheduled",
+                    ReferenceId = appointment.Id.ToString()
+                };
+                await notifSvc.PersistAndSendNotificationAsync(appointment.Patient.UserId, patNotification);
+
+                var docNotification = new SystemNotificationDto
+                {
+                    Title = "Appointment Rescheduled",
+                    Message = $"Appointment with Patient {appointment.Patient.User.FirstName} {appointment.Patient.User.LastName} has been rescheduled to {newAppointmentDate:g}.",
+                    Type = "AppointmentRescheduled",
+                    ReferenceId = appointment.Id.ToString()
+                };
+                await notifSvc.PersistAndSendNotificationAsync(appointment.Doctor.UserId, docNotification);
+            }
+            catch (Exception sigEx)
+            {
+                _logger.LogError(sigEx, "Failed to persist/send reschedule notifications for appointment {Id}", appointment.Id);
+            }
         });
 
         return (true, "Appointment rescheduled successfully.", MapToDTO(appointment));
@@ -469,6 +569,29 @@ public class AppointmentService : IAppointmentService
             var emailSvc = scope.ServiceProvider.GetRequiredService<IEmailService>();
             try { await emailSvc.SendAppointmentConfirmedEmailAsync(confirmEmail, appointment); }
             catch (Exception ex) { Log.Error(ex, "Background confirm email failed for appointment {Id}", appointment.Id); }
+        });
+
+        // Persist + push real-time SignalR notifications
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopeFactory.CreateScope();
+                var notifSvc = scope.ServiceProvider.GetRequiredService<INotificationService>();
+
+                var patNotification = new SystemNotificationDto
+                {
+                    Title = "Appointment Confirmed",
+                    Message = $"Your appointment on {appointment.AppointmentDate:g} has been confirmed.",
+                    Type = "AppointmentConfirmed",
+                    ReferenceId = appointment.Id.ToString()
+                };
+                await notifSvc.PersistAndSendNotificationAsync(appointment.Patient.UserId, patNotification);
+            }
+            catch (Exception sigEx)
+            {
+                _logger.LogError(sigEx, "Failed to persist/send confirm notifications for appointment {Id}", appointment.Id);
+            }
         });
 
         return (true, "Appointment confirmed.");

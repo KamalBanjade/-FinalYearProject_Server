@@ -6,6 +6,7 @@ public class ConversationDTO
     public string OtherUserName { get; set; } = string.Empty;
     public string OtherUserRole { get; set; } = string.Empty;
     public string? OtherUserProfilePictureUrl { get; set; }
+    public string? OtherUserGender { get; set; }
     public string? LastMessageText { get; set; }
     public DateTime? LastMessageAt { get; set; }
     public int UnreadCount { get; set; }
